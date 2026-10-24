@@ -6,10 +6,12 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::Result;
+use crate::pins::PinnedItem;
 use crate::queue::{load_candidates, plan};
 use crate::session::due_count;
 use crate::settings::Settings;
 use crate::types::parse_day;
+use crate::views::{QuestionRef, TopicRef};
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct TodayStats {
@@ -79,6 +81,116 @@ pub async fn today(pool: &SqlitePool, s: &Settings, now: DateTime<Utc>) -> Resul
         new_introduced_today: introduced,
         due_tomorrow: due_count(pool, s, day + Duration::days(1), now).await?,
         streak: streak(pool, s, now).await?,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+pub struct DayActivity {
+    pub study_day: NaiveDate,
+    pub count: u32,
+    /// Counts of again, hard, good, easy.
+    pub by_grade: [u32; 4],
+    pub topics: Vec<TopicRef>,
+}
+
+/// Main-program review activity per study day in `from..=to`; days without reviews are omitted.
+pub async fn activity(pool: &SqlitePool, from: NaiveDate, to: NaiveDate) -> Result<Vec<DayActivity>> {
+    let rows: Vec<(String, i64, i64, String)> = sqlx::query_as(
+        "SELECT s.study_day, r.grade, t.id, t.name
+         FROM reviews r
+         JOIN sessions s ON s.id = r.session_id
+         JOIN questions q ON q.id = r.question_id
+         JOIN topics t ON t.id = q.topic_id
+         WHERE s.kind = 'main' AND s.study_day BETWEEN ? AND ?
+         ORDER BY s.study_day",
+    )
+    .bind(from.to_string())
+    .bind(to.to_string())
+    .fetch_all(pool)
+    .await?;
+    let mut out: Vec<DayActivity> = vec![];
+    for (day, grade, topic_id, topic_name) in rows {
+        let day = parse_day(&day)?;
+        if out.last().is_none_or(|d| d.study_day != day) {
+            out.push(DayActivity { study_day: day, count: 0, by_grade: [0; 4], topics: vec![] });
+        }
+        let d = out.last_mut().expect("just pushed");
+        d.count += 1;
+        d.by_grade[(grade - 1) as usize] += 1;
+        if !d.topics.iter().any(|t| t.id == topic_id) {
+            d.topics.push(TopicRef { id: topic_id, name: topic_name });
+        }
+    }
+    for d in &mut out {
+        d.topics.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+    Ok(out)
+}
+
+/// The longest run of consecutive qualifying study days.
+pub async fn best_streak(pool: &SqlitePool, s: &Settings) -> Result<u32> {
+    let mut days: Vec<NaiveDate> = qualifying_days(pool, s).await?.into_iter().collect();
+    days.sort();
+    let (mut best, mut run) = (0, 0);
+    for (i, d) in days.iter().enumerate() {
+        run = if i > 0 && *d - days[i - 1] == Duration::days(1) { run + 1 } else { 1 };
+        best = best.max(run);
+    }
+    Ok(best)
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct HomeSummary {
+    pub today: TodayStats,
+    pub by_grade_today: [u32; 4],
+    pub best_streak: u32,
+    pub new_waiting: u32,
+    pub new_waiting_days: u32,
+    pub pinned: Vec<PinnedItem>,
+    pub leeches: Vec<QuestionRef>,
+    pub ratings_unprocessed: u32,
+}
+
+/// Everything the home page shows, in one call.
+pub async fn overview(pool: &SqlitePool, s: &Settings, now: DateTime<Utc>) -> Result<HomeSummary> {
+    let today = self::today(pool, s, now).await?;
+    let grades: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT r.grade, count(*) FROM reviews r JOIN sessions s ON s.id = r.session_id
+         WHERE s.kind = 'main' AND s.study_day = ? GROUP BY r.grade",
+    )
+    .bind(today.study_day.to_string())
+    .fetch_all(pool)
+    .await?;
+    let mut by_grade_today = [0u32; 4];
+    for (g, n) in grades {
+        by_grade_today[(g - 1) as usize] = n as u32;
+    }
+    let new_waiting = load_candidates(pool, s, today.study_day, now).await?.1.len() as u32;
+    let leech_ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT q.id FROM questions q JOIN question_state st ON st.question_id = q.id
+         WHERE q.status = 'active' AND q.scope = 'main' AND st.lapses >= ? ORDER BY q.id",
+    )
+    .bind(s.leech_lapses as i64)
+    .fetch_all(pool)
+    .await?;
+    let mut leeches = vec![];
+    for id in leech_ids {
+        let d = crate::questions::get(pool, id).await?;
+        leeches.push(QuestionRef { id, prompt: d.question.prompt, topic_path: d.topic_path });
+    }
+    let ratings_unprocessed: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM question_ratings WHERE processed_in_guide_version_id IS NULL")
+            .fetch_one(pool)
+            .await?;
+    Ok(HomeSummary {
+        best_streak: best_streak(pool, s).await?,
+        new_waiting,
+        new_waiting_days: new_waiting.div_ceil(s.new_per_day.max(1)),
+        pinned: crate::pins::active(pool).await?,
+        leeches,
+        ratings_unprocessed: ratings_unprocessed as u32,
+        by_grade_today,
+        today,
     })
 }
 
@@ -175,5 +287,79 @@ mod tests {
         let st = today(&p, &s, now).await.unwrap();
         assert_eq!((st.answered_today, st.remaining_today), (1, 2));
         assert_eq!(st.new_introduced_today, if nq.kind == crate::queue::ItemKind::New { 1 } else { 0 });
+    }
+
+    async fn graded_review(p: &SqlitePool, topic: i64, sid: i64, at: &str, grade: i64) -> i64 {
+        let q = testutil::question(p, topic).await;
+        testutil::review_row(p, q, sid, at, grade).await;
+        q
+    }
+
+    #[tokio::test]
+    async fn activity_groups_by_day_with_grades_and_topics() {
+        let (p, _) = setup().await;
+        let horns = testutil::topic(&p, None, "Horns").await;
+        let ac = testutil::topic(&p, None, "AC").await;
+        let d1 = testutil::session(&p, "2026-10-22").await;
+        graded_review(&p, horns, d1, "2026-10-22T12:00:00Z", 1).await;
+        graded_review(&p, ac, d1, "2026-10-22T12:05:00Z", 3).await;
+        let d2 = testutil::session(&p, "2026-10-23").await;
+        graded_review(&p, horns, d2, "2026-10-23T12:00:00Z", 4).await;
+        let a = activity(&p, day("2026-10-01"), day("2026-10-31")).await.unwrap();
+        assert_eq!(a.len(), 2);
+        assert_eq!((a[0].study_day, a[0].count, a[0].by_grade), (day("2026-10-22"), 2, [1, 0, 1, 0]));
+        let names: Vec<&str> = a[0].topics.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["AC", "Horns"]);
+        assert_eq!((a[1].count, a[1].by_grade), (1, [0, 0, 0, 1]));
+    }
+
+    #[tokio::test]
+    async fn activity_ignores_project_sessions_and_range() {
+        let (p, _) = setup().await;
+        let t = testutil::topic(&p, None, "T").await;
+        let main = testutil::session(&p, "2026-10-22").await;
+        graded_review(&p, t, main, "2026-10-22T12:00:00Z", 3).await;
+        let proj: i64 = sqlx::query_scalar(
+            "INSERT INTO sessions (kind, study_day, started_at, created_at, updated_at) VALUES ('project', '2026-10-22', 'x', 'x', 'x') RETURNING id",
+        )
+        .fetch_one(&p).await.unwrap();
+        graded_review(&p, t, proj, "2026-10-22T13:00:00Z", 3).await;
+        let old = testutil::session(&p, "2025-01-01").await;
+        graded_review(&p, t, old, "2025-01-01T12:00:00Z", 3).await;
+        let a = activity(&p, day("2026-10-01"), day("2026-10-31")).await.unwrap();
+        assert_eq!(a.iter().map(|d| d.count).collect::<Vec<_>>(), vec![1]);
+    }
+
+    #[tokio::test]
+    async fn best_streak_finds_longest_run() {
+        let (p, s) = setup().await;
+        for d in ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-05", "2026-10-06"] {
+            finished_day(&p, d, 2).await;
+        }
+        assert_eq!(best_streak(&p, &s).await.unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn overview_counts() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "T").await;
+        let today = testutil::session(&p, "2026-10-24").await;
+        let reviewed = graded_review(&p, t, today, "2026-10-24T12:00:00Z", 2).await;
+        sqlx::query("INSERT INTO question_state (question_id, stability, difficulty, due_on, last_reviewed_at, last_study_day, reps, lapses, state) VALUES (?, 1, 5, '2026-10-25', '2026-10-24T12:00:00+00:00', '2026-10-24', 7, 6, 'relearning')")
+            .bind(reviewed).execute(&p).await.unwrap();
+        for _ in 0..5 {
+            testutil::question(&p, t).await;
+        }
+        let pinned = testutil::question(&p, t).await;
+        crate::pins::pin(&p, pinned, utc("2026-10-24T13:00:00Z")).await.unwrap();
+        crate::guide::rate(&p, reviewed, 2, None, None, None, utc("2026-10-24T13:00:00Z")).await.unwrap();
+        let o = overview(&p, &s, utc("2026-10-24T20:00:00Z")).await.unwrap();
+        assert_eq!(o.by_grade_today, [0, 1, 0, 0]);
+        assert_eq!((o.new_waiting, o.new_waiting_days), (6, 2));
+        assert_eq!(o.pinned.iter().map(|i| i.question_id).collect::<Vec<_>>(), vec![pinned]);
+        assert_eq!(o.leeches.iter().map(|q| q.id).collect::<Vec<_>>(), vec![reviewed]);
+        assert_eq!(o.ratings_unprocessed, 1);
+        let json = serde_json::to_string(&o).unwrap();
+        assert!(!json.contains("\"answer\"") && !json.contains("\"rubric\""), "{json}");
     }
 }

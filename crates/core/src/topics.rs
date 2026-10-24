@@ -80,6 +80,8 @@ pub struct TopicNode {
     /// Active questions in this topic's whole subtree, by level 0-3.
     pub questions_by_level: [u32; 4],
     pub active_questions: u32,
+    /// Active questions in the subtree with at least one review.
+    pub studied: u32,
     /// Mean current recall probability over reviewed active questions in the subtree.
     pub avg_retrievability: Option<f32>,
     pub children: Vec<TopicNode>,
@@ -304,17 +306,26 @@ pub async fn tree(
     for (topic, level, n) in rows {
         direct.entry(topic).or_default()[level as usize] = n as u32;
     }
+    let studied_rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT q.topic_id, count(*) FROM questions q JOIN question_state s ON s.question_id = q.id
+         WHERE q.status = 'active' AND s.reps > 0 GROUP BY q.topic_id",
+    )
+    .fetch_all(pool)
+    .await?;
+    let studied_direct: HashMap<i64, u32> = studied_rows.into_iter().map(|(t, n)| (t, n as u32)).collect();
     let retr = crate::topics::retrievability_by_topic(pool, now).await?;
 
     struct Ctx<'a> {
         by_parent: &'a HashMap<Option<i64>, Vec<&'a Topic>>,
         direct: &'a HashMap<i64, [u32; 4]>,
+        studied: &'a HashMap<i64, u32>,
         retr: &'a HashMap<i64, Vec<f32>>,
         max_depth: Option<u32>,
     }
     // Returns the node plus the subtree's retrievability samples.
     fn build(ctx: &Ctx, t: &Topic, depth: u32) -> (TopicNode, Vec<f32>) {
         let mut counts = ctx.direct.get(&t.id).copied().unwrap_or_default();
+        let mut studied = ctx.studied.get(&t.id).copied().unwrap_or_default();
         let mut samples = ctx.retr.get(&t.id).cloned().unwrap_or_default();
         let mut children = vec![];
         for child in ctx.by_parent.get(&Some(t.id)).map(Vec::as_slice).unwrap_or_default() {
@@ -322,6 +333,7 @@ pub async fn tree(
             for (c, n) in counts.iter_mut().zip(node.questions_by_level) {
                 *c += n;
             }
+            studied += node.studied;
             samples.extend(s);
             if ctx.max_depth.is_none_or(|m| depth < m) {
                 children.push(node);
@@ -333,13 +345,14 @@ pub async fn tree(
             depth,
             questions_by_level: counts,
             active_questions: counts.iter().sum(),
+            studied,
             avg_retrievability: avg,
             children,
         };
         (node, samples)
     }
 
-    let ctx = Ctx { by_parent: &by_parent, direct: &direct, retr: &retr, max_depth: depth };
+    let ctx = Ctx { by_parent: &by_parent, direct: &direct, studied: &studied_direct, retr: &retr, max_depth: depth };
     let roots: Vec<(&Topic, u32)> = match root {
         Some(id) => {
             let detail = get(pool, id).await?;
@@ -536,5 +549,17 @@ mod tests {
             ids.push(create(p, nt(None, &format!("T{i}")), now()).await.unwrap().id);
         }
         ids
+    }
+
+    #[tokio::test]
+    async fn tree_counts_studied_questions() {
+        let p = test_pool().await;
+        let a = create(&p, nt(None, "A"), now()).await.unwrap();
+        let b = create(&p, nt(Some(a.id), "B"), now()).await.unwrap();
+        let q1 = crate::testutil::question(&p, b.id).await;
+        crate::testutil::question(&p, b.id).await;
+        crate::testutil::due_state(&p, q1, "2026-10-25", 3.0).await;
+        let t = tree(&p, None, None, now()).await.unwrap();
+        assert_eq!((t[0].studied, t[0].active_questions, t[0].children[0].studied), (1, 2, 1));
     }
 }

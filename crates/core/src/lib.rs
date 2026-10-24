@@ -17,6 +17,7 @@ pub mod settings;
 pub mod stats;
 pub mod topics;
 pub mod types;
+pub mod views;
 
 pub use error::{Error, Result};
 
