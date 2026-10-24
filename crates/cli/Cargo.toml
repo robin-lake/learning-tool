@@ -4,24 +4,34 @@ edition.workspace = true
 version.workspace = true
 publish.workspace = true
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "learning-tool"
 path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+axum.workspace = true
 chrono.workspace = true
 clap.workspace = true
 learning-core.workspace = true
+mime_guess.workspace = true
+open.workspace = true
 rmcp.workspace = true
+rust-embed.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
+tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+http-body-util.workspace = true
+tower.workspace = true
 rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 tempfile.workspace = true

@@ -1,7 +1,6 @@
 //! `learning-tool`: the MCP server Claude Code uses for study sessions, plus admin commands.
 
-mod mcp;
-
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -11,6 +10,7 @@ use clap::{Parser, Subcommand};
 use learning_core::db::{self, DataDir};
 use learning_core::settings::{self, Settings};
 use learning_core::{backup, scheduler, stats};
+use learning_tool::{mcp, web};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
@@ -26,6 +26,18 @@ struct Cli {
 enum Command {
     /// Serve the MCP tools over stdio (Claude Code starts this).
     Mcp,
+    /// Run the web app on localhost and open it in the browser.
+    Serve {
+        /// Port to listen on (default: the web_port setting, 4747).
+        #[arg(long)]
+        port: Option<u16>,
+        /// Address to bind (default 127.0.0.1).
+        #[arg(long)]
+        host: Option<IpAddr>,
+        /// Don't open a browser.
+        #[arg(long)]
+        no_open: bool,
+    },
     /// Create or migrate the database.
     Migrate,
     /// Print today's study numbers.
@@ -99,6 +111,11 @@ async fn main() -> anyhow::Result<()> {
                 Err(e) => tracing::warn!("daily backup failed: {e}"),
             }
             mcp::serve(pool, dirs).await?;
+        }
+        Command::Serve { port, host, no_open } => {
+            let s = Settings::load(&pool).await?;
+            let host = host.unwrap_or(IpAddr::from([127, 0, 0, 1]));
+            web::serve(pool, dirs, host, port.unwrap_or(s.web_port), !no_open).await?;
         }
         Command::Migrate => println!("Database ready at {}", dirs.db_path().display()),
         Command::Stats => {
