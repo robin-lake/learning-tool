@@ -96,6 +96,13 @@ async fn has_pending_migrations(pool: &SqlitePool) -> Result<bool> {
     Ok(MIGRATOR.iter().any(|m| !m.migration_type.is_down_migration() && !applied.contains(&m.version)))
 }
 
+/// Starts a transaction that takes the write lock up front (`BEGIN IMMEDIATE`). A deferred
+/// transaction that reads before writing fails immediately with "database is locked" when another
+/// connection writes concurrently; an immediate one waits on the busy timeout instead.
+pub async fn begin_write(pool: &SqlitePool) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>> {
+    Ok(pool.begin_with("BEGIN IMMEDIATE").await?)
+}
+
 async fn seed(pool: &SqlitePool) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     sqlx::query(

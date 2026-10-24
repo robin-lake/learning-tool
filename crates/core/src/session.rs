@@ -128,7 +128,7 @@ pub async fn start(pool: &SqlitePool, s: &Settings, now: DateTime<Utc>) -> Resul
     let (session_id, resumed) = match open {
         Some(id) if unreviewed_counts(pool, id).await?.0 > 0 => (id, true),
         _ => {
-            let mut tx = pool.begin().await?;
+            let mut tx = crate::db::begin_write(pool).await?;
             let id = match open {
                 Some(id) => id,
                 None => sqlx::query_scalar(
@@ -252,7 +252,7 @@ pub async fn record_review(
     let grade = grading::grade(&score, question.pass_threshold, input.hints_used, input.fluent);
     let stamp = ts(now);
 
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     let item: Option<(i64, String)> = sqlx::query_as(
         "SELECT id, kind FROM session_items WHERE session_id = ? AND question_id = ? AND review_id IS NULL
          ORDER BY ordinal LIMIT 1",

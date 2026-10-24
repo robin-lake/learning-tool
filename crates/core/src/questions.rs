@@ -247,7 +247,7 @@ pub async fn add(
             })?;
     }
     let stamp = ts(now);
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     let mut next_priority: i64 =
         sqlx::query_scalar("SELECT COALESCE(MAX(priority) + 1, 0) FROM questions WHERE topic_id = ?")
             .bind(topic_id)
@@ -320,7 +320,7 @@ pub async fn update(pool: &SqlitePool, id: i64, patch: QuestionPatch, now: DateT
     q.source_locator = patch.source_locator.or(q.source_locator);
     validate_content(q.level, &q.prompt, &q.answer, &q.rubric, q.pass_threshold)?;
     let stamp = ts(now);
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     let new_id = if rewording {
         let new_id: i64 = sqlx::query_scalar(
             "INSERT INTO questions (topic_id, level, prompt, answer, rubric, pass_threshold, source_id, source_locator,
@@ -625,5 +625,38 @@ mod tests {
         let n: i64 = sqlx::query_scalar("SELECT count(*) FROM question_links").fetch_one(&p).await.unwrap();
         assert_eq!(n, 1);
         assert!(link(&p, ids[0], ids[0], LinkKind::Related, 0.5, String::new(), now()).await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod concurrency_tests {
+    use super::*;
+    use crate::grading::RubricPoint;
+
+    #[tokio::test]
+    async fn concurrent_read_then_write_transactions_do_not_fail() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("learning.db");
+        let a = crate::db::open(&path).await.unwrap();
+        let b = crate::db::open(&path).await.unwrap();
+        let s = Settings::load(&a).await.unwrap();
+        let t = crate::testutil::topic(&a, None, "T").await;
+        let q = || NewQuestion {
+            level: 0, prompt: "p".into(), answer: "a".into(),
+            rubric: Rubric(vec![RubricPoint { id: "r1".into(), point: "x".into(), weight: 1.0, essential: false }]),
+            pass_threshold: None, source_id: None, source_locator: None, priority: None,
+            guide_version_id: None, secondary_topic_ids: vec![],
+        };
+        let work = |pool: SqlitePool, s: Settings| async move {
+            for _ in 0..40 {
+                add(&pool, t, vec![q(), q()], QuestionStatus::Active, &s, Utc::now()).await?;
+            }
+            Ok::<_, Error>(())
+        };
+        let (ra, rb) = tokio::join!(tokio::spawn(work(a.clone(), s.clone())), tokio::spawn(work(b, s)));
+        ra.unwrap().unwrap();
+        rb.unwrap().unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT count(*) FROM questions").fetch_one(&a).await.unwrap();
+        assert_eq!(n, 160);
     }
 }

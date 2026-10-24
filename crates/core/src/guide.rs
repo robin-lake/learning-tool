@@ -163,7 +163,7 @@ pub async fn save_version(
     }
     let (parent, _) = current(pool).await?;
     let stamp = ts(now);
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     let id: i64 = sqlx::query_scalar(
         "INSERT INTO guide_versions (content, change_summary, parent_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?4) RETURNING id",

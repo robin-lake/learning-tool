@@ -172,19 +172,19 @@ pub async fn save_state(conn: &mut SqliteConnection, s: &QState) -> Result<()> {
 /// Returns the number of questions with state.
 pub async fn rebuild_all(pool: &SqlitePool, settings: &Settings) -> Result<u32> {
     let params = SchedParams::main(settings);
+    let mut tx = crate::db::begin_write(pool).await?;
     let questions: Vec<(i64, Option<i64>)> =
-        sqlx::query_as("SELECT id, revision_of FROM questions").fetch_all(pool).await?;
+        sqlx::query_as("SELECT id, revision_of FROM questions").fetch_all(&mut *tx).await?;
     let parent = |id: i64| questions.iter().find(|(q, _)| *q == id).and_then(|(_, p)| *p);
     let reviews: Vec<(i64, String, i64, String)> = sqlx::query_as(
         "SELECT r.question_id, r.reviewed_at, r.grade, s.study_day
          FROM reviews r JOIN sessions s ON s.id = r.session_id
          ORDER BY r.reviewed_at, r.id",
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
-    let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM question_state").execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM question_state").execute(&mut *tx).await?;
     let mut rebuilt = 0;
     for &(qid, _) in &questions {
         let mut lineage = vec![qid];

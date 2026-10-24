@@ -117,7 +117,7 @@ pub async fn add(pool: &SqlitePool, dirs: &DataDir, n: NewSource, now: DateTime<
         None => None,
     };
     let stamp = ts(now);
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     let id: i64 = sqlx::query_scalar(
         "INSERT INTO sources (title, authors, kind, url, summary, added_at, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6) RETURNING id",
