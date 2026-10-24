@@ -1,0 +1,12 @@
+[package]
+name = "learning-tool"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "learning-tool"
+path = "src/main.rs"
+
+[dependencies]
+learning-core.workspace = true
