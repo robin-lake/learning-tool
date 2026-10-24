@@ -60,6 +60,10 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 
 - Milestone 1 design (schema, MCP tools, skills): `docs/superpowers/specs/2026-10-23-milestone-1-study-loop-design.md`; plan: `docs/superpowers/plans/2026-10-23-milestone-1-study-loop.md`.
 
+## Future ideas
+
+- [docs/ideas/model-agnostic-clients.md](docs/ideas/model-agnostic-clients.md): using the study workflows from other agent tools (OpenCode, other LLM providers).
+
 ## Design foundations
 
 - [README.md](README.md) — core principles of *Ultralearning*, *Make It Stick*, and *The Procrastination Equation*, with what each means for the app. Check design choices against these.
