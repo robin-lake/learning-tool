@@ -24,6 +24,7 @@ pub const DEFAULT_PASS_THRESHOLD: f32 = 0.6;
 const REVIEWS_PER_NEW_FIRST_MONTH: f32 = 8.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Question {
     pub id: i64,
     pub topic_id: i64,
@@ -72,6 +73,7 @@ pub struct NewQuestion {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, optional_fields))]
 pub struct QuestionPatch {
     pub prompt: Option<String>,
     pub answer: Option<String>,
@@ -99,6 +101,7 @@ pub struct AddResult {
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ReviewRow {
     pub id: i64,
     pub question_id: i64,
@@ -116,6 +119,7 @@ pub struct ReviewRow {
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RatingRow {
     pub id: i64,
     pub question_id: i64,
@@ -128,6 +132,7 @@ pub struct RatingRow {
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct QuestionDetail {
     pub question: Question,
     pub topic_path: Vec<String>,

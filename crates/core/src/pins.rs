@@ -11,6 +11,7 @@ use crate::types::{parse_ts, ts};
 use crate::{Error, Result};
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Pin {
     pub id: i64,
     pub question_id: i64,
@@ -22,6 +23,7 @@ pub struct Pin {
 
 /// An active pin as shown in lists (no answer or rubric).
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PinnedItem {
     pub pin_id: i64,
     pub question_id: i64,

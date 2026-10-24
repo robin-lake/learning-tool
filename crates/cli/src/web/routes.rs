@@ -38,6 +38,7 @@ impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for Body<T> {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, optional_fields))]
 pub struct CreateTopicBody {
     pub parent_id: Option<i64>,
     pub name: String,
@@ -46,6 +47,7 @@ pub struct CreateTopicBody {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, optional_fields))]
 pub struct UpdateTopicBody {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -54,11 +56,13 @@ pub struct UpdateTopicBody {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct StatusBody {
     pub status: QuestionStatus,
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, optional_fields))]
 pub struct RatingBody {
     pub usefulness: u8,
     pub feedback: Option<String>,

@@ -13,12 +13,14 @@ use crate::types::{LinkKind, parse_day, parse_ts};
 use crate::{Result, pins};
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TopicRef {
     pub id: i64,
     pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct QuestionRef {
     pub id: i64,
     pub prompt: String,
@@ -26,6 +28,7 @@ pub struct QuestionRef {
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TopicCard {
     pub id: i64,
     pub name: String,
@@ -54,6 +57,7 @@ impl From<&TopicNode> for TopicCard {
 
 /// A question in a list: everything except the answer and rubric.
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct QuestionRow {
     pub id: i64,
     pub topic_id: i64,
@@ -67,6 +71,7 @@ pub struct QuestionRow {
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct LinkView {
     pub topic: TopicRef,
     pub kind: LinkKind,
@@ -76,6 +81,7 @@ pub struct LinkView {
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ReferenceRef {
     pub id: i64,
     pub title: String,
@@ -83,6 +89,7 @@ pub struct ReferenceRef {
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TopicPage {
     /// `None` for the root (all top-level topics).
     pub topic: Option<Topic>,
@@ -184,6 +191,7 @@ pub async fn topic_page(
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct QuestionPage {
     pub detail: QuestionDetail,
     pub topic_refs: Vec<TopicRef>,

@@ -10,6 +10,7 @@ fn one() -> f32 {
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RubricPoint {
     /// Short stable id, unique within the rubric (e.g. "r1").
     pub id: String,
@@ -25,9 +26,11 @@ pub struct RubricPoint {
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
 #[serde(transparent)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, as = "Vec<RubricPoint>"))]
 pub struct Rubric(pub Vec<RubricPoint>);
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PointResult {
     /// The rubric point id.
     pub id: String,
@@ -47,6 +50,7 @@ pub struct Score {
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 #[repr(u8)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Grade {
     Again = 1,
     Hard = 2,

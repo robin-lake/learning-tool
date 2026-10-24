@@ -13,6 +13,7 @@ use crate::{Error, Result};
 str_enum!(TopicStatus { Active => "active", Archived => "archived" });
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Topic {
     pub id: i64,
     pub parent_id: Option<i64>,

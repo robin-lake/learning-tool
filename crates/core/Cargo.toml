@@ -6,6 +6,8 @@ publish.workspace = true
 
 [features]
 test-util = []
+# Export API types to TypeScript (web/src/api/generated) via `cargo test --features learning-core/ts`.
+ts = ["dep:ts-rs"]
 
 [dependencies]
 chrono.workspace = true
@@ -18,6 +20,7 @@ sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

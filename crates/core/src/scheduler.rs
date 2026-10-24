@@ -13,6 +13,7 @@ use crate::{Error, Result};
 str_enum!(CardState { New => "new", Review => "review", Relearning => "relearning" });
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct MemState {
     pub stability: f32,
     pub difficulty: f32,
@@ -20,6 +21,7 @@ pub struct MemState {
 
 /// Scheduling state of one question, derived from its reviews.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct QState {
     pub question_id: i64,
     pub mem: Option<MemState>,

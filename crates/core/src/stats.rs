@@ -14,6 +14,7 @@ use crate::types::parse_day;
 use crate::views::{QuestionRef, TopicRef};
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TodayStats {
     pub study_day: NaiveDate,
     pub answered_today: u32,
@@ -85,6 +86,7 @@ pub async fn today(pool: &SqlitePool, s: &Settings, now: DateTime<Utc>) -> Resul
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct DayActivity {
     pub study_day: NaiveDate,
     pub count: u32,
@@ -140,6 +142,7 @@ pub async fn best_streak(pool: &SqlitePool, s: &Settings) -> Result<u32> {
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct HomeSummary {
     pub today: TodayStats,
     pub by_grade_today: [u32; 4],

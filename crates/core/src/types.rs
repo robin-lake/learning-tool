@@ -9,6 +9,7 @@ macro_rules! str_enum {
     ($(#[$meta:meta])* $name:ident { $($variant:ident => $text:literal),+ $(,)? }) => {
         $(#[$meta])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+        #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
         pub enum $name {
             $(#[serde(rename = $text)] $variant),+
         }
