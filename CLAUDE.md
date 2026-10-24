@@ -9,7 +9,8 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 - **Backend:** Rust.
 - **Storage:** a local SQLite database. Single user, runs on the user's machine.
 - **Frontend:** React + TypeScript (Vite, TanStack, shadcn). The goal is a tool to actually use, so pick the mature ecosystem. API types are generated from the Rust structs (e.g. `ts-rs` / `specta`) rather than hand-written. The 3D stretch goal may be a Rust/WASM module embedded in the React app.
-- **Quizzing happens in Claude Code**, not in the web app. Claude reads due questions and records grades against the local database (likely via an MCP server sharing a core crate with the web backend). The web app is for tracking, visualization, and project features.
+- **Quizzing happens in Claude Code**, not in the web app. The web app is for tracking, visualization, and project features.
+- **Claude ↔ database: an MCP server** (`learning-tool mcp`, stdio) exposing typed tools, plus a small admin CLI (`migrate`, `stats`, `backup`, later `serve`). Skills hold the workflows; Rust holds data and scheduling.
 - **Claude writes questions with the user.** A "build a topic" skill: Claude finds references (PDFs, articles, textbooks, best-practice guides), stores them, extracts their essence, and generates questions. New questions go straight into the main program by default; reviewing them first is opt-in.
 - **References:** metadata in SQLite; original files in a folder beside the DB; text extracted once to a text/Markdown file (with page markers) and indexed with SQLite FTS5, so Claude never re-reads PDFs. Questions cite their reference and location.
 - **Grading:** Claude grades free-form answers against a per-question rubric (harder questions → more rubric points needed to pass), then maps the score to again/hard/good/easy deterministically. Rubric results are stored too.
@@ -19,18 +20,28 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 - **Question usefulness ratings:** any question can be rated 1–5 for usefulness, with optional free-text feedback on why. Optional and low-friction during a session (never forced on every question).
 - **Refine skill:** a skill that reads usefulness ratings + feedback and updates the question-writing criteria for each level (L0–L3), including curated good and bad examples. The question-generation skill uses these criteria, so generation improves over time. Claude classifies each piece of feedback from the user's words: *badly made question* (wording, triviality, wrong level) → updates how questions are written and rewrites/retires that question; *knowledge not worth having* → updates what gets chosen for questions and may drop it from the main program. Same pattern as distilling PR-comment history into a review skill.
 - **Scheduler:** FSRS (`fsrs-rs`). Daily cap on new main-program questions; reviews are never capped.
+- **Session sizing follows SRS best practice** (counts, not time; target feel ~15–20 min, ~10 questions):
+  - Cap **new** main-program questions per day — default **3** (configurable). Never cap reviews; all due reviews are served.
+  - When due reviews run high (default > 20), new questions pause automatically until the load drops.
+  - After a gap, an overdue backlog is spread over several days, lowest retrievability first, rather than dumped into one session.
+- **Adding questions to a topic:** prioritize the questions that matter most, broad before specific.
+- **Milestone 1 = core study loop + topic building** (Rust core, schema, FSRS, Claude Code interface, `/study`, references, build-a-topic). No web app yet — the minimum needed to test whether the idea works.
 - **Projects page** UI is a separate, later plan; the data model above should leave room for it.
+
+## Dependencies (chosen)
+
+- **Backend:** Cargo workspace — `core` lib (DB, scheduler, topic graph) + one `learning-tool` binary with subcommands (`mcp`, `serve`, `migrate`). `tokio`, `rmcp` (stdio transport), `sqlx` (SQLite, migrations, compile-time-checked queries; FTS5 for references), `fsrs`, `axum` + `tower-http` (web API, milestone 3), `ts-rs` (TS types from Rust), `chrono`, `clap`, `serde`/`serde_json`, `thiserror` (core) / `anyhow` (binary), `tracing` (logs to stderr/file — stdout belongs to MCP).
+- **No Rust PDF crates:** skills run `pdftotext` (poppler) / `ocrmypdf`; Rust stores and indexes the extracted text.
+- **Frontend (milestone 3+):** React 19, TypeScript, Vite, pnpm, TanStack Router + Query, shadcn/ui (Radix, Tailwind 4), `lucide-react`, `d3-hierarchy` + `d3-scale`/`d3-scale-chromatic` for the map, `motion` for transitions, hand-rolled SVG heatmap with shadcn Tooltip, `date-fns`, Biome, Vitest + Testing Library.
 
 ## Open decisions
 
-- **Claude ↔ database interface:** MCP server vs. CLI + skill; exact tools exposed.
-- **Detailed schema** for topics, cross-links, questions, rubrics, references, reviews.
+- Milestone 1 design (schema, MCP tools, skills): `docs/superpowers/specs/2026-10-23-milestone-1-study-loop-design.md` (approved).
 
 ## Design foundations
 
 - [README.md](README.md) — core principles of *Ultralearning*, *Make It Stick*, and *The Procrastination Equation*, with what each means for the app. Check design choices against these.
 - [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) — SRS/Anki/FSRS lessons and their implications. Consult before changing scheduling, grading, workload, or question-writing behavior.
-- **Topic schema details** (see below).
 
 ## Product outline
 
