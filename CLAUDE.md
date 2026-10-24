@@ -16,6 +16,8 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 - **Mastery levels L0–L3** on every question, defined by ability rather than content: L0 orientation (what/why, plain English), L1 working knowledge (concepts, qualitative trade-offs), L2 applied (formulas, worked calculations, using the tools), L3 expert (design decisions under constraints, diagnosis, critique). Topics carry a long-term target level. Subtopics = breadth, levels = depth. *How levels and nesting interact is expected to need tuning — treat as provisional.*
 - **Main program vs. projects:** one topic graph and one review log for everything. Each topic/question is either in the **main program** (high bar: "matters to me in 10 years") or **project-scoped**. Projects link to existing general topics (optionally requiring a deeper level) and can own project-only topics. When a project ends, its items are promoted into the main program or archived (unscheduled, history kept).
 - **Two study skills:** `/study` = daily main-program session only (drives home-page counts and streak). `/study-project <name>` = one project's questions, on demand. Project scheduling is gentler (lower desired retention / capped intervals).
+- **Question usefulness ratings:** any question can be rated 1–5 for usefulness, with optional free-text feedback on why. Optional and low-friction during a session (never forced on every question).
+- **Refine skill:** a skill that reads usefulness ratings + feedback and updates the question-writing criteria for each level (L0–L3), including curated good and bad examples. The question-generation skill uses these criteria, so generation improves over time. Claude classifies each piece of feedback from the user's words: *badly made question* (wording, triviality, wrong level) → updates how questions are written and rewrites/retires that question; *knowledge not worth having* → updates what gets chosen for questions and may drop it from the main program. Same pattern as distilling PR-comment history into a review skill.
 - **Scheduler:** FSRS (`fsrs-rs`). Daily cap on new main-program questions; reviews are never capped.
 - **Projects page** UI is a separate, later plan; the data model above should leave room for it.
 
@@ -43,3 +45,7 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 - **Topics nest and cross-link.** Topics form a hierarchy, and topics/questions can be linked to others with a strength ("how related"). Model links as weighted edges so the 2D map and a future 3D graph read the same data.
 - **Review history is an append-only log.** Every grade is a stored event; anything shown for a past date (map playback, heatmap) is derived from the log, never from overwritten state.
 - **Keep rendering separate from data.** The backend serves "knowledge state" (per topic/question strength, recency, size, links) as plain data, optionally as of a date. Views — 2D map, 3D graph — are clients of that.
+
+## Git
+
+- Commits are authored by the user only. Do **not** add `Co-Authored-By: Claude` (or any Claude attribution) to commit messages or PR descriptions.
