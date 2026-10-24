@@ -82,3 +82,12 @@ pub(crate) fn validate_weight(weight: f32) -> Result<()> {
     }
     Ok(())
 }
+
+str_enum!(
+    /// Why a question was rated the way it was.
+    RatingClass {
+        QuestionQuality => "question_quality",
+        KnowledgeValue => "knowledge_value",
+        Positive => "positive",
+    }
+);

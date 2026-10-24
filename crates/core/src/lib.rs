@@ -4,6 +4,7 @@ pub mod clock;
 pub mod db;
 pub mod error;
 pub mod grading;
+pub mod questions;
 pub mod scheduler;
 pub mod settings;
 pub mod topics;
