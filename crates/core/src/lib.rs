@@ -5,6 +5,7 @@ pub mod clock;
 pub mod db;
 pub mod error;
 pub mod grading;
+pub mod guide;
 pub mod questions;
 pub mod queue;
 pub mod references;
