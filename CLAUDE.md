@@ -75,6 +75,10 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 - **Review history is an append-only log.** Every grade is a stored event; anything shown for a past date (map playback, heatmap) is derived from the log, never from overwritten state.
 - **Keep rendering separate from data.** The backend serves "knowledge state" (per topic/question strength, recency, size, links) as plain data, optionally as of a date. Views — 2D map, 3D graph — are clients of that.
 
+## Reviews
+
+After building new work, run the relevant architecture reviews on the diff: `/review-backend`, `/review-database`, `/review-frontend` and `/review-code`. Fix the high findings and normally the medium ones in code you just wrote, then report what you left. See [docs/review-skills.md](docs/review-skills.md). Bug hunting is separate (`/code-review`).
+
 ## Git
 
 - Commits are authored by the user only. Do **not** add `Co-Authored-By: Claude` (or any Claude attribution) to commit messages or PR descriptions.

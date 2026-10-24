@@ -42,6 +42,8 @@ diff introduces or worsens a violation.
 - **Introduced or worsened by the diff** → a finding.
 - **Pre-existing, merely nearby** → at most a one-line **Noticed** note. Don't blame the diff for it.
 - **Unsure** → say so in the finding rather than presenting a guess as fact.
+- **Owned more specifically by another review skill** (e.g. a missing test for new SQL is DB-R9, not
+  BE-G10) → leave it to that skill; don't report the same line twice across reviews.
 
 ## 5. Grade severity
 
