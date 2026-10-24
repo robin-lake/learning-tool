@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { TopicView, validateTopicSearch } from "@/components/topics/TopicView";
 
 export const Route = createFileRoute("/topics/")({
-  component: () => <h1 className="text-xl font-semibold">Topics</h1>,
+  validateSearch: validateTopicSearch,
+  component: function TopicsRoot() {
+    return <TopicView id={null} search={Route.useSearch()} />;
+  },
 });
