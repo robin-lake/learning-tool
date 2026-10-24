@@ -94,6 +94,37 @@ fn decluster(items: &mut [(Candidate, ItemKind)]) {
     }
 }
 
+/// A queue candidate; retrievability is computed when the question has been reviewed.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn candidate(
+    question_id: i64,
+    topic_id: i64,
+    depth: i64,
+    position: i64,
+    level: i64,
+    priority: i64,
+    stability: Option<f64>,
+    last_reviewed_at: Option<String>,
+    now: DateTime<Utc>,
+) -> Result<Candidate> {
+    let retrievability = match (stability, last_reviewed_at) {
+        (Some(st), Some(last)) => {
+            let days = (now - parse_ts(&last)?).num_seconds().max(0) as f32 / 86_400.0;
+            Some(retrievability(st as f32, days))
+        }
+        _ => None,
+    };
+    Ok(Candidate {
+        question_id,
+        topic_id,
+        topic_depth: depth as u32,
+        topic_position: position,
+        level: level as u8,
+        priority,
+        retrievability,
+    })
+}
+
 /// Due and new main-program candidates for `today`, plus how many new questions were introduced today.
 /// Only active questions whose topic and every ancestor topic are active are included.
 pub async fn load_candidates(
@@ -122,26 +153,12 @@ pub async fn load_candidates(
     let today_s = today.to_string();
     let (mut due, mut new) = (vec![], vec![]);
     for (id, topic_id, depth, position, level, priority, state, due_on, stability, last) in rows {
-        let mut c = Candidate {
-            question_id: id,
-            topic_id,
-            topic_depth: depth as u32,
-            topic_position: position,
-            level: level as u8,
-            priority,
-            retrievability: None,
-        };
         match state.as_deref() {
-            None | Some("new") => new.push(c),
+            None | Some("new") => new.push(candidate(id, topic_id, depth, position, level, priority, None, None, now)?),
             _ => {
                 if due_on.as_deref().is_some_and(|d| d <= today_s.as_str()) {
-                    c.retrievability = Some(match (stability, last) {
-                        (Some(st), Some(last)) => {
-                            let days = (now - parse_ts(&last)?).num_seconds().max(0) as f32 / 86_400.0;
-                            retrievability(st as f32, days)
-                        }
-                        _ => 0.0,
-                    });
+                    let mut c = candidate(id, topic_id, depth, position, level, priority, stability, last, now)?;
+                    c.retrievability.get_or_insert(0.0);
                     due.push(c);
                 }
             }

@@ -24,6 +24,7 @@ pub struct Settings {
     pub timezone: TzSetting,
     pub backup_dir: Option<PathBuf>,
     pub backups_keep: u32,
+    pub web_port: u16,
 }
 
 const KEYS: &[&str] = &[
@@ -37,6 +38,7 @@ const KEYS: &[&str] = &[
     "timezone",
     "backup_dir",
     "backups_keep",
+    "web_port",
 ];
 
 fn parse_u32(key: &str, value: &str) -> Result<u32> {
@@ -85,6 +87,12 @@ fn validate(key: &str, value: &str) -> Result<()> {
             parse_tz(value)?;
         }
         "backup_dir" => {}
+        "web_port" => {
+            let port = parse_u32(key, value)?;
+            if !(1..=65535).contains(&port) {
+                return Err(Error::Invalid(format!("{key} must be 1-65535, got {port}")));
+            }
+        }
         _ => {
             return Err(Error::Invalid(format!(
                 "unknown setting {key:?}; known settings: {}",
@@ -108,6 +116,7 @@ impl Default for Settings {
             timezone: TzSetting::System,
             backup_dir: None,
             backups_keep: 2,
+            web_port: 4747,
         }
     }
 }
@@ -141,6 +150,7 @@ impl Settings {
             timezone: parse_tz(&get("timezone")?)?,
             backup_dir: (!backup_dir.trim().is_empty()).then(|| PathBuf::from(backup_dir.trim())),
             backups_keep: parse_u32("backups_keep", &get("backups_keep")?)?,
+            web_port: parse_u32("web_port", &get("web_port")?)? as u16,
         })
     }
 }
@@ -187,6 +197,16 @@ mod tests {
         assert_eq!(s.backups_keep, 2);
         assert!(s.backup_dir.is_none());
         assert!(matches!(s.timezone, TzSetting::System));
+    }
+
+    #[tokio::test]
+    async fn web_port_default_and_validation() {
+        let p = test_pool().await;
+        assert_eq!(Settings::load(&p).await.unwrap().web_port, 4747);
+        assert!(matches!(set(&p, "web_port", "0").await, Err(Error::Invalid(_))));
+        assert!(matches!(set(&p, "web_port", "70000").await, Err(Error::Invalid(_))));
+        set(&p, "web_port", "5000").await.unwrap();
+        assert_eq!(Settings::load(&p).await.unwrap().web_port, 5000);
     }
 
     #[tokio::test]
