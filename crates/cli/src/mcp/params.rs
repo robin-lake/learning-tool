@@ -124,6 +124,14 @@ pub struct AttachReference {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct LinkReferenceTopics {
+    /// The reference to file under more topics.
+    pub id: i64,
+    /// Topics to add; existing links are kept.
+    pub topic_ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SearchReferences {
     pub query: String,
     /// Limit to references linked to this topic or its subtopics.

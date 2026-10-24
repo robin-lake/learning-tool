@@ -54,6 +54,9 @@ reference that's already stored, extract its text as above and call
 instead of adding a duplicate. That keeps its id, so questions citing it stay linked. Pass
 `replace: true` only to swap files it already has.
 
+If a reference that's already stored is relevant to a topic you're building, file it there with
+`mcp__learning-tool__link_reference_topics` instead of adding it again.
+
 ## 4. Extract and write questions
 
 1. Call `mcp__learning-tool__get_guide` and follow it — it holds the current level criteria, rules

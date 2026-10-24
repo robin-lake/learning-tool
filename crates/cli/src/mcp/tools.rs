@@ -181,6 +181,13 @@ impl LearningServer {
         })
     }
 
+    #[tool(description = "File an existing reference under more topics (e.g. a manual added before its own topic existed). Existing links are kept; links are never removed.")]
+    async fn link_reference_topics(&self, Parameters(p): Parameters<LinkReferenceTopics>) -> ToolResult {
+        respond(references::link_topics(&self.pool, p.id, p.topic_ids).await, |ids| {
+            format!("Reference {} is now linked to {} topics.", p.id, ids.len())
+        })
+    }
+
     #[tool(description = "Full-text search across stored references. Returns matching excerpts with their locators.")]
     async fn search_references(&self, Parameters(p): Parameters<SearchReferences>) -> ToolResult {
         respond(references::search(&self.pool, &p.query, p.topic_id, p.limit.unwrap_or(10)).await, |h| {

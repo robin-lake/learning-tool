@@ -307,6 +307,27 @@ pub async fn attach(
     Ok((find(pool, id).await?, count))
 }
 
+/// Links a reference to more topics (links are never removed; see DB-R4). Returns all its topic ids.
+pub async fn link_topics(pool: &SqlitePool, id: i64, topic_ids: Vec<i64>) -> Result<Vec<i64>> {
+    if topic_ids.is_empty() {
+        return Err(Error::Invalid("give at least one topic id to link".into()));
+    }
+    find(pool, id).await?;
+    for t in &topic_ids {
+        topics::find(pool, *t).await?;
+    }
+    let mut tx = crate::db::begin_write(pool).await?;
+    for t in &topic_ids {
+        sqlx::query("INSERT OR IGNORE INTO reference_topics (source_id, topic_id) VALUES (?, ?)")
+            .bind(id)
+            .bind(t)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(get(pool, id).await?.1)
+}
+
 /// Quotes each whitespace-separated term so user input can't break FTS5 query syntax.
 fn fts_query(query: &str) -> String {
     query
@@ -597,5 +618,29 @@ mod tests {
         assert!(matches!(attach(&p, &e.dirs, 999, ok, now()).await, Err(Error::NotFound { .. })));
         let leftovers: Vec<_> = std::fs::read_dir(e.dirs.references_dir()).unwrap().flatten().collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[tokio::test]
+    async fn link_topics_adds_links_idempotently() {
+        let e = env();
+        let p = test_pool().await;
+        let a = testutil::topic(&p, None, "A").await;
+        let b = testutil::topic(&p, None, "B").await;
+        let (src, _) = add(&p, &e.dirs, new_source(None, vec![a]), now()).await.unwrap();
+        assert_eq!(link_topics(&p, src.id, vec![b, a]).await.unwrap(), vec![a, b]);
+        assert_eq!(link_topics(&p, src.id, vec![b]).await.unwrap(), vec![a, b]);
+        assert_eq!(get(&p, src.id).await.unwrap().1, vec![a, b]);
+    }
+
+    #[tokio::test]
+    async fn link_topics_validates_before_writing() {
+        let e = env();
+        let p = test_pool().await;
+        let a = testutil::topic(&p, None, "A").await;
+        let (src, _) = add(&p, &e.dirs, new_source(None, vec![]), now()).await.unwrap();
+        assert!(matches!(link_topics(&p, src.id, vec![a, 999]).await, Err(Error::NotFound { .. })));
+        assert!(get(&p, src.id).await.unwrap().1.is_empty());
+        assert!(matches!(link_topics(&p, 999, vec![a]).await, Err(Error::NotFound { .. })));
+        assert!(matches!(link_topics(&p, src.id, vec![]).await, Err(Error::Invalid(_))));
     }
 }
