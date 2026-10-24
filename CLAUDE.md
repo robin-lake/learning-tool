@@ -2,7 +2,25 @@
 
 A personal spaced-repetition learning tool (Anki-like). Claude asks the user questions, the user's answers are graded (again / hard / good / easy), and a scheduler decides when each question comes back. A local web app shows progress and a map of what the user knows.
 
-**Status: planning.** No code yet. Design docs go in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Update this file when decisions are made — don't let it drift from reality.
+**Status: milestone 1 implemented** (study loop + topic building; no web app yet). Design docs go in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Update this file when decisions are made — don't let it drift from reality.
+
+## Layout
+
+- `crates/core/` (`learning-core`): all logic — `db` (open/migrate/seed), `settings`, `clock` (study day), `grading`, `scheduler` (FSRS), `topics`, `questions`, `queue`, `session`, `stats`, `chunking`, `references`, `guide`, `backup`. Migrations in `crates/core/migrations/`, first guide in `crates/core/seed/guide-v1.md`.
+- `crates/cli/` (`learning-tool` binary): clap CLI; `mcp` subcommand serves the core over stdio via `rmcp` (`src/mcp/`).
+- `skills/`: `/study`, `/build-topic`, `/refine-questions` (symlinked into `~/.claude/skills/` by `scripts/install.sh`).
+
+## Commands
+
+- `cargo test --workspace` — all tests (core unit tests use in-memory SQLite; `crates/cli/tests/mcp_stdio.rs` drives the real server).
+- `./scripts/install.sh` — install binary, register MCP server, link skills.
+- After rebuilding the binary, restart the MCP server in Claude Code (`/mcp`) to pick it up.
+
+## Conventions
+
+- Core functions take `now: DateTime<Utc>` explicitly — no hidden clock.
+- SQL uses sqlx runtime queries (`query`/`query_as`) with static strings; every query is covered by tests. sqlx 0.9 rejects `format!`-built SQL — bind values instead (use `json_each(?)` for lists).
+- The repo may sit on exFAT, where macOS writes `._*` sidecar files; `crates/core/build.rs` strips them from `migrations/`.
 
 ## Decided
 
@@ -30,13 +48,13 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 
 ## Dependencies (chosen)
 
-- **Backend:** Cargo workspace — `core` lib (DB, scheduler, topic graph) + one `learning-tool` binary with subcommands (`mcp`, `serve`, `migrate`). `tokio`, `rmcp` (stdio transport), `sqlx` (SQLite, migrations, compile-time-checked queries; FTS5 for references), `fsrs`, `axum` + `tower-http` (web API, milestone 3), `ts-rs` (TS types from Rust), `chrono`, `clap`, `serde`/`serde_json`, `thiserror` (core) / `anyhow` (binary), `tracing` (logs to stderr/file — stdout belongs to MCP).
+- **Backend:** Cargo workspace — `core` lib (DB, scheduler, topic graph) + one `learning-tool` binary with subcommands (`mcp`, `serve`, `migrate`). `tokio`, `rmcp` (stdio transport), `sqlx` (SQLite, migrations, FTS5 for references; runtime queries — see Conventions), `fsrs`, `axum` + `tower-http` (web API, milestone 3), `ts-rs` (TS types from Rust), `chrono`, `clap`, `serde`/`serde_json`, `thiserror` (core) / `anyhow` (binary), `tracing` (logs to stderr/file — stdout belongs to MCP).
 - **No Rust PDF crates:** skills run `pdftotext` (poppler) / `ocrmypdf`; Rust stores and indexes the extracted text.
 - **Frontend (milestone 3+):** React 19, TypeScript, Vite, pnpm, TanStack Router + Query, shadcn/ui (Radix, Tailwind 4), `lucide-react`, `d3-hierarchy` + `d3-scale`/`d3-scale-chromatic` for the map, `motion` for transitions, hand-rolled SVG heatmap with shadcn Tooltip, `date-fns`, Biome, Vitest + Testing Library.
 
-## Open decisions
+## Milestone docs
 
-- Milestone 1 design (schema, MCP tools, skills): `docs/superpowers/specs/2026-10-23-milestone-1-study-loop-design.md` (approved).
+- Milestone 1 design (schema, MCP tools, skills): `docs/superpowers/specs/2026-10-23-milestone-1-study-loop-design.md`; plan: `docs/superpowers/plans/2026-10-23-milestone-1-study-loop.md`.
 
 ## Design foundations
 

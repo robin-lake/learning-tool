@@ -7,7 +7,27 @@ It's meant as an Anki replacement with three differences:
 - **Grading is richer than pass/fail.** Harder questions have rubrics, and depth is tracked in mastery levels (L0 orientation → L3 expert).
 - **Your knowledge is visible as a map**, with topics cross-linked to show how ideas connect.
 
-Status: design phase. See [CLAUDE.md](CLAUDE.md) for decisions and [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) for SRS research.
+Status: milestone 1 (study loop + topic building) implemented; no web app yet. See [CLAUDE.md](CLAUDE.md) for decisions and [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) for SRS research.
+
+## Setup
+
+Prerequisites: Rust (rustup), Claude Code, and for PDFs `brew install poppler ocrmypdf`.
+
+```bash
+./scripts/install.sh
+```
+
+This builds and installs the `learning-tool` binary, registers it with Claude Code as a user-scope MCP server, links the skills into `~/.claude/skills/`, and creates the database. Start a new Claude Code session afterwards.
+
+- **Data** lives in `~/.learning-tool/` (set `LEARNING_TOOL_HOME` to move it): `learning.db`, `references/` (original files and extracted text), `backups/`, `logs/`.
+- **Backups:** a snapshot is taken the first time the MCP server starts each day and before any database migration; the 2 most recent are kept. `learning-tool config set backup_dir <path>` points them somewhere else (e.g. a synced folder). Restore with `learning-tool restore <file> --yes` after quitting Claude Code.
+
+## Daily use
+
+- `/study` — today's session: due reviews plus a few new questions, graded against rubrics. Say "rate 2, too trivial" (or any 1–5 with a reason) whenever a question deserves feedback.
+- `/build-topic <subject>` — outline a subject, gather references, and generate questions.
+- `/refine-questions` — turn your ratings into a better question-writing guide.
+- `learning-tool stats` — today's numbers in the terminal. `learning-tool config get` shows settings (new questions per day, retention target, day rollover hour, timezone…).
 
 ## Principles from the books
 
