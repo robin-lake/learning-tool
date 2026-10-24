@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqliteRow;
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, SqliteConnection, SqlitePool};
 
 use crate::chunking::{Chunk, DEFAULT_MAX_CHARS, chunk};
 pub use crate::db::DataDir;
@@ -148,16 +148,7 @@ pub async fn add(pool: &SqlitePool, dirs: &DataDir, n: NewSource, now: DateTime<
         if let (Some(src), Some(text)) = (&n.text_file, &text) {
             std::fs::copy(src, dir.join("text.md"))?;
             text_path = Some(rel("text.md"));
-            for (ordinal, c) in chunk(text, DEFAULT_MAX_CHARS).into_iter().enumerate() {
-                sqlx::query("INSERT INTO reference_chunks (source_id, locator, ordinal, text) VALUES (?, ?, ?, ?)")
-                    .bind(id)
-                    .bind(&c.locator)
-                    .bind(ordinal as i64)
-                    .bind(&c.text)
-                    .execute(&mut *tx)
-                    .await?;
-                count += 1;
-            }
+            count = insert_chunks(&mut tx, id, text).await?;
         }
         sqlx::query("UPDATE sources SET file_path = ?, text_path = ? WHERE id = ?")
             .bind(&file_path)
@@ -186,6 +177,134 @@ pub async fn add(pool: &SqlitePool, dirs: &DataDir, n: NewSource, now: DateTime<
             Err(e)
         }
     }
+}
+
+/// Chunks `text` and indexes it for reference `id` (the FTS index follows via triggers).
+async fn insert_chunks(conn: &mut SqliteConnection, id: i64, text: &str) -> Result<u32> {
+    let mut count = 0;
+    for (ordinal, c) in chunk(text, DEFAULT_MAX_CHARS).into_iter().enumerate() {
+        sqlx::query("INSERT INTO reference_chunks (source_id, locator, ordinal, text) VALUES (?, ?, ?, ?)")
+            .bind(id)
+            .bind(&c.locator)
+            .bind(ordinal as i64)
+            .bind(&c.text)
+            .execute(&mut *conn)
+            .await?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct AttachFiles {
+    /// Absolute path of the original file (e.g. a PDF of a book you now own).
+    #[serde(default)]
+    pub source_file: Option<PathBuf>,
+    /// Absolute path of its extracted text (pdftotext output or Markdown); replaces the searchable text.
+    #[serde(default)]
+    pub text_file: Option<PathBuf>,
+    /// Allow replacing a file the reference already has.
+    #[serde(default)]
+    pub replace: bool,
+}
+
+/// Adds files to an existing reference (e.g. a book stored as metadata only), keeping its id so
+/// questions that cite it stay linked. New text replaces the reference's chunks.
+pub async fn attach(
+    pool: &SqlitePool,
+    dirs: &DataDir,
+    id: i64,
+    files: AttachFiles,
+    now: DateTime<Utc>,
+) -> Result<(Source, u32)> {
+    if files.source_file.is_none() && files.text_file.is_none() {
+        return Err(Error::Invalid("attach needs a source_file, a text_file, or both".into()));
+    }
+    require_file(&files.source_file)?;
+    require_file(&files.text_file)?;
+    let current = find(pool, id).await?;
+    if !files.replace {
+        if files.source_file.is_some() && current.file_path.is_some() {
+            return Err(Error::Conflict(format!(
+                "reference {id} already has an original file; pass replace=true to swap it"
+            )));
+        }
+        if files.text_file.is_some() && current.text_path.is_some() {
+            return Err(Error::Conflict(format!(
+                "reference {id} already has extracted text; pass replace=true to swap it"
+            )));
+        }
+    }
+    let text = match &files.text_file {
+        Some(p) => Some(String::from_utf8_lossy(&std::fs::read(p)?).into_owned()),
+        None => None,
+    };
+    let dir = dirs.references_dir().join(id.to_string());
+    std::fs::create_dir_all(&dir)?;
+
+    // Stage copies under temporary names; they only replace the real files after the commit.
+    let original_name = files.source_file.as_ref().map(|p| {
+        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("bin").to_lowercase();
+        format!("original.{ext}")
+    });
+    let mut staged: Vec<(PathBuf, PathBuf)> = vec![];
+    if let (Some(src), Some(name)) = (&files.source_file, &original_name) {
+        staged.push((src.clone(), dir.join(name)));
+    }
+    if let Some(src) = &files.text_file {
+        staged.push((src.clone(), dir.join("text.md")));
+    }
+    let incoming = |path: &PathBuf| path.with_extension("incoming");
+    let result: Result<u32> = async {
+        for (src, dest) in &staged {
+            std::fs::copy(src, incoming(dest))?;
+        }
+        let mut tx = crate::db::begin_write(pool).await?;
+        let file_path = original_name.as_ref().map(|n| format!("references/{id}/{n}"));
+        let text_path = text.as_ref().map(|_| format!("references/{id}/text.md"));
+        let count = match &text {
+            Some(text) => {
+                sqlx::query("DELETE FROM reference_chunks WHERE source_id = ?").bind(id).execute(&mut *tx).await?;
+                insert_chunks(&mut tx, id, text).await?
+            }
+            None => sqlx::query_scalar::<_, i64>("SELECT count(*) FROM reference_chunks WHERE source_id = ?")
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await? as u32,
+        };
+        sqlx::query(
+            "UPDATE sources SET file_path = COALESCE(?, file_path), text_path = COALESCE(?, text_path), updated_at = ?
+             WHERE id = ?",
+        )
+        .bind(&file_path)
+        .bind(&text_path)
+        .bind(ts(now))
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(count)
+    }
+    .await;
+    let count = match result {
+        Ok(count) => count,
+        Err(e) => {
+            for (_, dest) in &staged {
+                let _ = std::fs::remove_file(incoming(dest));
+            }
+            return Err(e);
+        }
+    };
+    for (_, dest) in &staged {
+        std::fs::rename(incoming(dest), dest)?;
+    }
+    // A replaced original with a different extension leaves the old file behind; remove it.
+    if let (Some(old), Some(new)) = (&current.file_path, &original_name) {
+        if !old.ends_with(new.as_str()) {
+            let _ = std::fs::remove_file(dirs.root.join(old));
+        }
+    }
+    Ok((find(pool, id).await?, count))
 }
 
 /// Quotes each whitespace-separated term so user input can't break FTS5 query syntax.
@@ -404,5 +523,79 @@ mod tests {
         n.url = Some("https://example.com/horns".into());
         let (src, chunks) = add(&p, &e.dirs, n, now()).await.unwrap();
         assert_eq!((chunks, src.text_path), (0, None));
+    }
+
+    fn book() -> NewSource {
+        let mut n = new_source(None, vec![]);
+        n.kind = SourceKind::Book;
+        n.title = "Hornresp manual".into();
+        n
+    }
+
+    #[tokio::test]
+    async fn attach_adds_files_to_metadata_only_reference() {
+        let e = env();
+        let p = test_pool().await;
+        let (src, _) = add(&p, &e.dirs, book(), now()).await.unwrap();
+        std::fs::write(e.src.join("manual.pdf"), b"%PDF fake").unwrap();
+        std::fs::write(e.src.join("manual.txt"), "throat chamber\x0cmouth area").unwrap();
+        let files = AttachFiles { source_file: Some(e.src.join("manual.pdf")), text_file: Some(e.src.join("manual.txt")), replace: false };
+        let (src2, chunks) = attach(&p, &e.dirs, src.id, files, now()).await.unwrap();
+        assert_eq!((src2.id, chunks), (src.id, 2));
+        assert_eq!(src2.kind, SourceKind::Book);
+        assert!(e.dirs.root.join(src2.file_path.unwrap()).exists());
+        assert_eq!(search(&p, "throat", None, 10).await.unwrap()[0].locator, "p. 1");
+    }
+
+    #[tokio::test]
+    async fn attach_refuses_to_overwrite_without_replace() {
+        let e = env();
+        let p = test_pool().await;
+        std::fs::write(e.src.join("old.txt"), "old words").unwrap();
+        let (src, _) = add(&p, &e.dirs, new_source(Some(e.src.join("old.txt")), vec![]), now()).await.unwrap();
+        std::fs::write(e.src.join("new.txt"), "fresh words").unwrap();
+        let files = || AttachFiles { source_file: None, text_file: Some(e.src.join("new.txt")), replace: false };
+        assert!(matches!(attach(&p, &e.dirs, src.id, files(), now()).await, Err(Error::Conflict(_))));
+        assert_eq!(search(&p, "old", None, 10).await.unwrap().len(), 1);
+        let (_, n) = attach(&p, &e.dirs, src.id, AttachFiles { replace: true, ..files() }, now()).await.unwrap();
+        assert_eq!(n, 1);
+        assert!(search(&p, "old", None, 10).await.unwrap().is_empty());
+        assert_eq!(search(&p, "fresh", None, 10).await.unwrap().len(), 1);
+        let text = std::fs::read_to_string(e.dirs.root.join(format!("references/{}/text.md", src.id))).unwrap();
+        assert_eq!(text, "fresh words");
+    }
+
+    #[tokio::test]
+    async fn attach_replacing_original_with_new_extension_removes_old_file() {
+        let e = env();
+        let p = test_pool().await;
+        std::fs::write(e.src.join("page.html"), "<p>x</p>").unwrap();
+        let mut n = new_source(None, vec![]);
+        n.source_file = Some(e.src.join("page.html"));
+        let (src, _) = add(&p, &e.dirs, n, now()).await.unwrap();
+        std::fs::write(e.src.join("doc.pdf"), b"%PDF").unwrap();
+        let files = AttachFiles { source_file: Some(e.src.join("doc.pdf")), text_file: None, replace: true };
+        let (src2, _) = attach(&p, &e.dirs, src.id, files, now()).await.unwrap();
+        let dir = e.dirs.references_dir().join(src.id.to_string());
+        assert!(dir.join("original.pdf").exists());
+        assert!(!dir.join("original.html").exists());
+        assert_eq!(src2.file_path.as_deref(), Some(format!("references/{}/original.pdf", src.id).as_str()));
+    }
+
+    #[tokio::test]
+    async fn attach_validates_input() {
+        let e = env();
+        let p = test_pool().await;
+        let (src, _) = add(&p, &e.dirs, book(), now()).await.unwrap();
+        let none = AttachFiles { source_file: None, text_file: None, replace: false };
+        assert!(matches!(attach(&p, &e.dirs, src.id, none, now()).await, Err(Error::Invalid(_))));
+        let missing = AttachFiles { source_file: Some(e.src.join("nope.pdf")), text_file: None, replace: false };
+        let err = attach(&p, &e.dirs, src.id, missing, now()).await.unwrap_err();
+        assert!(matches!(&err, Error::Invalid(m) if m.contains("nope.pdf")), "{err}");
+        std::fs::write(e.src.join("a.pdf"), b"%PDF").unwrap();
+        let ok = AttachFiles { source_file: Some(e.src.join("a.pdf")), text_file: None, replace: false };
+        assert!(matches!(attach(&p, &e.dirs, 999, ok, now()).await, Err(Error::NotFound { .. })));
+        let leftovers: Vec<_> = std::fs::read_dir(e.dirs.references_dir()).unwrap().flatten().collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
     }
 }

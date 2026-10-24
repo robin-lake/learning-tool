@@ -2,6 +2,7 @@
 
 use learning_core::guide::NewExample;
 use learning_core::questions::{LinkKind, NewQuestion, QuestionPatch, QuestionStatus, RatingClass};
+use learning_core::references::AttachFiles;
 use learning_core::session::ReviewInput;
 use learning_core::topics::TopicStatus;
 use schemars::JsonSchema;
@@ -112,6 +113,14 @@ pub struct SetQuestionStatus {
     pub id: i64,
     /// proposed, active, suspended, or retired.
     pub status: QuestionStatus,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AttachReference {
+    /// The reference to add files to.
+    pub id: i64,
+    #[serde(flatten)]
+    pub files: AttachFiles,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

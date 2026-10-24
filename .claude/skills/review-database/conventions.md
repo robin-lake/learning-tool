@@ -24,7 +24,7 @@ How this codebase does things. Each entry says where it was decided. Never reuse
 **Decided:** Milestone 1 (Tasks 3 and 9).
 
 ### DB-R4 — Nothing user-facing is hard-deleted
-**Rule:** Topics become `archived`, questions `suspended`/`retired`, sources `archived`. Only pure queue rows (`session_items`) and the rebuildable cache (`question_state`) may be deleted.
+**Rule:** Topics become `archived`, questions `suspended`/`retired`, sources `archived`. Only pure queue rows (`session_items`), the rebuildable cache (`question_state`) and a reference's search chunks (`reference_chunks`, re-derived from its `text.md` when the text is replaced) may be deleted.
 **Why:** History and links stay intact for the map and playback.
 **Violation looks like:** `DELETE` on topics, questions, sources, ratings, guide versions or links.
 **Typical severity:** high

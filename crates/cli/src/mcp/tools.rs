@@ -174,6 +174,13 @@ impl LearningServer {
         })
     }
 
+    #[tool(description = "Add files to an existing reference, e.g. a book stored as metadata only that you now have as a PDF. Keeps the reference id, so questions citing it stay linked. A new text_file replaces the searchable text; pass replace=true to swap a file the reference already has.")]
+    async fn attach_reference_file(&self, Parameters(p): Parameters<AttachReference>) -> ToolResult {
+        respond(references::attach(&self.pool, &self.dirs, p.id, p.files, Utc::now()).await, |(s, n)| {
+            format!("Attached files to reference {} ({}); {} searchable chunks.", s.id, s.title, n)
+        })
+    }
+
     #[tool(description = "Full-text search across stored references. Returns matching excerpts with their locators.")]
     async fn search_references(&self, Parameters(p): Parameters<SearchReferences>) -> ToolResult {
         respond(references::search(&self.pool, &p.query, p.topic_id, p.limit.unwrap_or(10)).await, |h| {

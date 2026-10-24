@@ -44,7 +44,15 @@ files Robin provides. For each reference:
 4. Call `mcp__learning-tool__add_reference` with absolute paths (`source_file`, `text_file`), `kind`,
    `title`, `authors`, `url`, `summary`, and the relevant `topic_ids`.
 
-Respect access: don't try to get around paywalls; ask Robin for files instead.
+Respect access: don't try to get around paywalls; ask Robin for files instead. A source Robin doesn't
+have yet (e.g. a book) can be stored as metadata only: `title`, `authors`, `kind`, `url`, `summary`.
+
+**Before adding, check for an existing entry** with `mcp__learning-tool__search_references` or the
+topic's references (`get_topic`, then `get_reference`). When Robin later provides the file for a
+reference that's already stored, extract its text as above and call
+`mcp__learning-tool__attach_reference_file` with the reference `id`, `source_file` and `text_file`
+instead of adding a duplicate. That keeps its id, so questions citing it stay linked. Pass
+`replace: true` only to swap files it already has.
 
 ## 4. Extract and write questions
 

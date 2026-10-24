@@ -6,11 +6,11 @@ use rmcp::transport::TokioChildProcess;
 use rmcp::ServiceExt;
 use serde_json::{Value, json};
 
-const TOOLS: [&str; 25] = [
+const TOOLS: [&str; 26] = [
     "start_session", "next_question", "skip_question", "record_review", "end_session", "rate_question",
     "list_topics", "get_topic", "create_topic", "update_topic", "link_topics",
     "add_questions", "update_question", "set_question_status", "link_questions", "get_question",
-    "today_stats", "add_reference", "search_references", "get_reference", "read_reference",
+    "today_stats", "add_reference", "attach_reference_file", "search_references", "get_reference", "read_reference",
     "get_guide", "list_ratings", "classify_rating", "save_guide_version",
 ];
 
@@ -73,6 +73,19 @@ async fn full_session_and_references_over_stdio() {
     assert!(!err, "{r}");
     let (_, hits) = call(&client, "search_references", json!({"query": "throat"})).await;
     assert_eq!(hits[0]["locator"], "p. 2");
+
+    // A book stored as metadata only gets its text later, keeping its id.
+    let (_, book) = call(&client, "add_reference", json!({"title": "Hornresp manual", "kind": "docs"})).await;
+    let book_id = book[0]["id"].as_i64().unwrap();
+    let manual = home.path().join("manual.txt");
+    std::fs::write(&manual, "flare rate\x0cexponential horn").unwrap();
+    let (err, attached) = call(&client, "attach_reference_file", json!({"id": book_id, "text_file": manual})).await;
+    assert!(!err, "{attached}");
+    assert_eq!(attached[0]["id"], book_id);
+    let (_, hits) = call(&client, "search_references", json!({"query": "exponential"})).await;
+    assert_eq!((hits[0]["source_id"].as_i64(), hits[0]["locator"].as_str()), (Some(book_id), Some("p. 2")));
+    let (err, msg) = call(&client, "attach_reference_file", json!({"id": book_id, "text_file": manual})).await;
+    assert!(err && msg.to_string().contains("replace"), "{msg}");
 
     // A second session today has nothing left; an unknown rubric id is reported as a tool error.
     let (_, again) = call(&client, "start_session", json!({})).await;
