@@ -41,6 +41,8 @@ pub struct NextQuestion {
     pub source_citation: Option<String>,
     pub lapses: u32,
     pub is_leech: bool,
+    /// True if Robin pinned this question for this session.
+    pub pinned: bool,
     pub recent_reviews: Vec<ReviewRow>,
     /// For grading only — contains the answer and rubric. Listed last so it never shows in a
     /// truncated preview; don't reveal it before the learner answers.
@@ -129,8 +131,8 @@ pub async fn start(pool: &SqlitePool, s: &Settings, now: DateTime<Utc>) -> Resul
     .bind(today.to_string())
     .fetch_optional(pool)
     .await?;
-    let (due, new, introduced) = load_candidates(pool, s, today, now).await?;
-    let queue = plan(due, new, introduced, s);
+    let (due, new, pinned, introduced) = load_candidates(pool, s, today, now).await?;
+    let queue = plan(due, new, pinned, introduced, s);
     let stamp = ts(now);
 
     let (session_id, resumed) = match open {
@@ -152,12 +154,15 @@ pub async fn start(pool: &SqlitePool, s: &Settings, now: DateTime<Utc>) -> Resul
                 .bind(id)
                 .fetch_one(&mut *tx)
                 .await?;
-            for (i, (qid, kind)) in queue.items.iter().enumerate() {
-                sqlx::query("INSERT INTO session_items (session_id, ordinal, question_id, kind) VALUES (?, ?, ?, ?)")
+            for (i, item) in queue.items.iter().enumerate() {
+                sqlx::query(
+                    "INSERT INTO session_items (session_id, ordinal, question_id, kind, pin_id) VALUES (?, ?, ?, ?, ?)",
+                )
                     .bind(id)
                     .bind(base + i as i64)
-                    .bind(qid)
-                    .bind(kind.as_str())
+                    .bind(item.question_id)
+                    .bind(item.kind.as_str())
+                    .bind(item.pin_id)
                     .execute(&mut *tx)
                     .await?;
             }
@@ -201,14 +206,14 @@ pub async fn next_question(pool: &SqlitePool, session_id: i64, now: DateTime<Utc
     session_row(pool, session_id).await?;
     let settings = Settings::load(pool).await?;
     loop {
-        let item: Option<(i64, i64, String, i64)> = sqlx::query_as(
-            "SELECT id, question_id, kind, ordinal FROM session_items
+        let item: Option<(i64, i64, String, i64, Option<i64>)> = sqlx::query_as(
+            "SELECT id, question_id, kind, ordinal, pin_id FROM session_items
              WHERE session_id = ? AND review_id IS NULL ORDER BY ordinal LIMIT 1",
         )
         .bind(session_id)
         .fetch_optional(pool)
         .await?;
-        let Some((item_id, qid, kind, ordinal)) = item else { return Ok(None) };
+        let Some((item_id, qid, kind, ordinal, pin_id)) = item else { return Ok(None) };
         let question = questions::find(pool, qid).await?;
         if question.status != QuestionStatus::Active {
             // Retired, suspended or reworded since planning: drop it from the queue.
@@ -240,6 +245,7 @@ pub async fn next_question(pool: &SqlitePool, session_id: i64, now: DateTime<Utc
             source_citation: citation(pool, &question).await?,
             lapses,
             is_leech: lapses >= settings.leech_lapses,
+            pinned: pin_id.is_some(),
             recent_reviews,
             question,
         }));
@@ -264,13 +270,13 @@ pub async fn record_review(
     let stamp = ts(now);
 
     let mut tx = crate::db::begin_write(pool).await?;
-    let item: Option<(i64, String, Option<i64>)> =
-        sqlx::query_as("SELECT question_id, kind, review_id FROM session_items WHERE id = ? AND session_id = ?")
+    let item: Option<(i64, String, Option<i64>, Option<i64>)> =
+        sqlx::query_as("SELECT question_id, kind, review_id, pin_id FROM session_items WHERE id = ? AND session_id = ?")
             .bind(input.item_id)
             .bind(session_id)
             .fetch_optional(&mut *tx)
             .await?;
-    let Some((item_question, kind, existing)) = item else {
+    let Some((item_question, kind, existing, pin_id)) = item else {
         return Err(Error::NotFound { entity: "session item", id: input.item_id });
     };
     if existing.is_some() {
@@ -311,6 +317,14 @@ pub async fn record_review(
         .bind(item_id)
         .execute(&mut *tx)
         .await?;
+    if let Some(pin_id) = pin_id {
+        sqlx::query("UPDATE pins SET used_in_session_id = ?1, used_at = ?2, updated_at = ?2 WHERE id = ?3")
+            .bind(session_id)
+            .bind(&stamp)
+            .bind(pin_id)
+            .execute(&mut *tx)
+            .await?;
+    }
     let requeued = grade == Grade::Again && kind != ItemKind::Requeue.as_str();
     if requeued {
         sqlx::query(
@@ -432,7 +446,7 @@ mod tests {
     async fn empty_database_session_is_empty() {
         let (p, s) = setup().await;
         let st = start(&p, &s, utc(NOW)).await.unwrap();
-        assert_eq!((st.planned, st.due_total, st.new_allowed), (0, 0, 3));
+        assert_eq!((st.planned, st.due_total, st.new_allowed), (0, 0, 0));
         assert!(next_question(&p, st.session_id, utc(NOW)).await.unwrap().is_none());
         let sum = end(&p, &s, st.session_id, utc(NOW)).await.unwrap();
         assert_eq!(sum.answered, 0);
@@ -659,5 +673,60 @@ mod tests {
         let head: String = json.lines().take(12).collect::<Vec<_>>().join("\n");
         assert!(head.contains("What does a horn do?"), "{head}");
         assert!(!head.contains("SECRET-ANSWER") && !head.contains("rubric"), "{head}");
+    }
+
+    #[tokio::test]
+    async fn pinned_item_served_first_and_flagged() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "A").await;
+        testutil::question(&p, t).await;
+        let q2 = testutil::question(&p, t).await;
+        crate::pins::pin(&p, q2, utc(NOW)).await.unwrap();
+        let st = start(&p, &s, utc(NOW)).await.unwrap();
+        let first = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
+        assert_eq!((first.question_id, first.pinned), (q2, true));
+    }
+
+    #[tokio::test]
+    async fn pin_marked_used_on_record_not_on_plan() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "A").await;
+        let q = testutil::question(&p, t).await;
+        crate::pins::pin(&p, q, utc(NOW)).await.unwrap();
+        let st = start(&p, &s, utc(NOW)).await.unwrap();
+        assert!(crate::pins::is_pinned(&p, q).await.unwrap());
+        record_review(&p, &s, st.session_id, input_for(&p, st.session_id, q, all_hit()).await, utc(NOW)).await.unwrap();
+        assert!(!crate::pins::is_pinned(&p, q).await.unwrap());
+        let used: Option<i64> = sqlx::query_scalar("SELECT used_in_session_id FROM pins").fetch_one(&p).await.unwrap();
+        assert_eq!(used, Some(st.session_id));
+    }
+
+    #[tokio::test]
+    async fn skipped_pin_stays_pinned() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "A").await;
+        let q = testutil::question(&p, t).await;
+        crate::pins::pin(&p, q, utc(NOW)).await.unwrap();
+        let st = start(&p, &s, utc(NOW)).await.unwrap();
+        let nq = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
+        skip(&p, st.session_id, nq.item_id).await.unwrap();
+        assert!(crate::pins::is_pinned(&p, q).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn open_session_not_changed_by_new_pin() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "A").await;
+        testutil::question(&p, t).await;
+        let extra = testutil::question(&p, t).await;
+        sqlx::query("UPDATE settings SET value = '1' WHERE key = 'new_per_day'").execute(&p).await.unwrap();
+        let s1 = Settings::load(&p).await.unwrap();
+        let a = start(&p, &s1, utc(NOW)).await.unwrap();
+        crate::pins::pin(&p, extra, utc(NOW)).await.unwrap();
+        let b = start(&p, &s1, utc(NOW)).await.unwrap();
+        assert_eq!((b.session_id, b.planned), (a.session_id, 1));
+        let first = next_question(&p, b.session_id, utc(NOW)).await.unwrap().unwrap();
+        assert!(!first.pinned);
+        let _ = s;
     }
 }

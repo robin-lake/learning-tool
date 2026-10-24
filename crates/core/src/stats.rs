@@ -67,10 +67,10 @@ pub async fn today(pool: &SqlitePool, s: &Settings, now: DateTime<Utc>) -> Resul
     .bind(&day_s)
     .fetch_optional(pool)
     .await?;
-    let (due, new, introduced) = load_candidates(pool, s, day, now).await?;
+    let (due, new, pinned, introduced) = load_candidates(pool, s, day, now).await?;
     let remaining = match open {
         Some(n) if n > 0 => n as u32,
-        _ => plan(due, new, introduced, s).items.len() as u32,
+        _ => plan(due, new, pinned, introduced, s).items.len() as u32,
     };
     Ok(TodayStats {
         study_day: day,

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::Result;
+use crate::pins::{self, PinnedCandidate};
 use crate::scheduler::retrievability;
 use crate::settings::Settings;
 use crate::types::{parse_ts, str_enum};
@@ -25,30 +26,68 @@ pub struct Candidate {
     pub retrievability: Option<f32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlannedItem {
+    pub question_id: i64,
+    pub kind: ItemKind,
+    pub pin_id: Option<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueuePlan {
-    pub items: Vec<(i64, ItemKind)>,
+    pub items: Vec<PlannedItem>,
     pub due_total: u32,
     pub backlog_carried: u32,
     pub new_allowed: u32,
+    /// Pins placed in this plan.
+    pub pinned_used: u32,
+    /// Pins that didn't fit today's new-question slots; they stay pinned.
+    pub pinned_waiting: u32,
 }
 
 fn r(c: &Candidate) -> f32 {
     c.retrievability.unwrap_or(0.0)
 }
 
-/// Builds a session queue from due reviews and new candidates (see the design doc's session rules).
-pub fn plan(mut due: Vec<Candidate>, mut new: Vec<Candidate>, new_introduced_today: u32, s: &Settings) -> QueuePlan {
+/// Builds a session queue from due reviews, new candidates and pins (see the design docs' session
+/// and pin rules). Pins come first: a due pin costs nothing, other pins use a new-question slot.
+pub fn plan(
+    mut due: Vec<Candidate>,
+    mut new: Vec<Candidate>,
+    pinned: Vec<PinnedCandidate>,
+    new_introduced_today: u32,
+    s: &Settings,
+) -> QueuePlan {
     let due_total = due.len() as u32;
+    let mut slots =
+        if due_total >= s.new_pause_review_threshold { 0 } else { s.new_per_day.saturating_sub(new_introduced_today) };
+
+    let mut prefix = vec![];
+    let (mut pins_in_slots, mut pinned_waiting) = (0, 0);
+    for p in &pinned {
+        let id = p.candidate.question_id;
+        new.retain(|c| c.question_id != id);
+        if p.is_due {
+            due.retain(|c| c.question_id != id);
+            prefix.push(PlannedItem { question_id: id, kind: ItemKind::Review, pin_id: Some(p.pin_id) });
+        } else if slots > 0 {
+            slots -= 1;
+            pins_in_slots += 1;
+            let kind = if p.candidate.retrievability.is_none() { ItemKind::New } else { ItemKind::Review };
+            prefix.push(PlannedItem { question_id: id, kind, pin_id: Some(p.pin_id) });
+        } else {
+            pinned_waiting += 1;
+        }
+    }
+
     due.sort_by(|a, b| r(a).total_cmp(&r(b)).then(a.question_id.cmp(&b.question_id)));
     let limit = s.backlog_daily_limit as usize;
     let backlog_carried = due.len().saturating_sub(limit) as u32;
     due.truncate(limit);
 
-    let new_allowed =
-        if due_total >= s.new_pause_review_threshold { 0 } else { s.new_per_day.saturating_sub(new_introduced_today) };
     new.sort_by_key(|c| (c.topic_depth, c.topic_position, c.level, c.priority, c.question_id));
-    new.truncate(new_allowed as usize);
+    new.truncate(slots as usize);
+    let scheduled_new = new.len() as u32;
 
     // Warm-up: the most likely successes first, for an early win.
     let mut warmup: Vec<Candidate> = due.iter().rev().take_while(|c| r(c) >= WARMUP_MIN_R).take(WARMUP_MAX).cloned().collect();
@@ -64,15 +103,20 @@ pub fn plan(mut due: Vec<Candidate>, mut new: Vec<Candidate>, new_introduced_tod
         body.insert(after_reviews + k, (c, ItemKind::New));
     }
 
-    let mut items: Vec<(Candidate, ItemKind)> = warmup.into_iter().map(|c| (c, ItemKind::Review)).collect();
-    items.extend(body);
-    decluster(&mut items);
+    let mut rest: Vec<(Candidate, ItemKind)> = warmup.into_iter().map(|c| (c, ItemKind::Review)).collect();
+    rest.extend(body);
+    decluster(&mut rest);
 
+    let pinned_used = prefix.len() as u32;
+    let mut items = prefix;
+    items.extend(rest.into_iter().map(|(c, kind)| PlannedItem { question_id: c.question_id, kind, pin_id: None }));
     QueuePlan {
-        items: items.into_iter().map(|(c, k)| (c.question_id, k)).collect(),
+        items,
         due_total,
         backlog_carried,
-        new_allowed,
+        new_allowed: scheduled_new + pins_in_slots,
+        pinned_used,
+        pinned_waiting,
     }
 }
 
@@ -125,14 +169,14 @@ pub(crate) fn candidate(
     })
 }
 
-/// Due and new main-program candidates for `today`, plus how many new questions were introduced today.
-/// Only active questions whose topic and every ancestor topic are active are included.
+/// Due, new and pinned main-program candidates for `today`, plus how many new questions were introduced
+/// today. Only active questions whose topic and every ancestor topic are active are included.
 pub async fn load_candidates(
     pool: &SqlitePool,
     _s: &Settings,
     today: NaiveDate,
     now: DateTime<Utc>,
-) -> Result<(Vec<Candidate>, Vec<Candidate>, u32)> {
+) -> Result<(Vec<Candidate>, Vec<Candidate>, Vec<PinnedCandidate>, u32)> {
     type Row = (i64, i64, i64, i64, i64, i64, Option<String>, Option<String>, Option<f64>, Option<String>);
     let rows: Vec<Row> = sqlx::query_as(
         "WITH RECURSIVE live(id, depth) AS (
@@ -171,7 +215,8 @@ pub async fn load_candidates(
     .bind(&today_s)
     .fetch_one(pool)
     .await?;
-    Ok((due, new, introduced as u32))
+    let pinned = pins::load_pinned(pool, today, now).await?;
+    Ok((due, new, pinned, introduced as u32))
 }
 
 #[cfg(test)]
@@ -190,16 +235,19 @@ mod tests {
         Candidate { question_id: id, topic_id: topic, topic_depth: depth, topic_position: 0, level, priority, retrievability: None }
     }
     fn ids(p: &QueuePlan) -> Vec<i64> {
-        p.items.iter().map(|(id, _)| *id).collect()
+        p.items.iter().map(|i| i.question_id).collect()
     }
     fn news(p: &QueuePlan) -> Vec<i64> {
-        p.items.iter().filter(|(_, k)| *k == ItemKind::New).map(|(id, _)| *id).collect()
+        p.items.iter().filter(|i| i.kind == ItemKind::New).map(|i| i.question_id).collect()
+    }
+    fn pinned(pin_id: i64, c: Candidate, is_due: bool) -> PinnedCandidate {
+        PinnedCandidate { pin_id, candidate: c, is_due }
     }
 
     #[test]
     fn new_capped_by_per_day_minus_introduced() {
         let n = (1..=5).map(|i| new(i, i, 0, 0, i)).collect();
-        let p = plan(vec![], n, 1, &settings());
+        let p = plan(vec![], n, vec![], 1, &settings());
         assert_eq!(p.new_allowed, 2);
         assert_eq!(news(&p), vec![1, 2]);
     }
@@ -207,7 +255,7 @@ mod tests {
     #[test]
     fn new_paused_when_due_at_threshold() {
         let due = (1..=20).map(|i| rev(i, i, 0.5)).collect();
-        let p = plan(due, vec![new(100, 1, 0, 0, 0)], 0, &settings());
+        let p = plan(due, vec![new(100, 1, 0, 0, 0)], vec![], 0, &settings());
         assert_eq!((p.new_allowed, p.due_total), (0, 20));
         assert!(news(&p).is_empty());
     }
@@ -215,7 +263,7 @@ mod tests {
     #[test]
     fn backlog_limited_lowest_r_first() {
         let due = (1..=35).map(|i| rev(i, i, i as f32 / 100.0)).collect();
-        let p = plan(due, vec![], 0, &settings());
+        let p = plan(due, vec![], vec![], 0, &settings());
         assert_eq!((p.items.len(), p.backlog_carried, p.due_total), (30, 5, 35));
         let mut kept = ids(&p);
         kept.sort();
@@ -225,7 +273,7 @@ mod tests {
     #[test]
     fn new_ordered_broad_first() {
         let n = vec![new(1, 1, 1, 0, 0), new(2, 2, 0, 1, 0), new(3, 2, 0, 0, 5), new(4, 2, 0, 0, 1)];
-        let p = plan(vec![], n, 0, &settings());
+        let p = plan(vec![], n, vec![], 0, &settings());
         // depth 0 first; within it L0 before L1, then priority
         assert_eq!(news(&p), vec![4, 3, 2]);
     }
@@ -233,7 +281,7 @@ mod tests {
     #[test]
     fn warmup_takes_up_to_two_high_r() {
         let due = vec![rev(1, 1, 0.3), rev(2, 2, 0.95), rev(3, 3, 0.9), rev(4, 4, 0.97), rev(5, 5, 0.4)];
-        let p = plan(due, vec![], 0, &settings());
+        let p = plan(due, vec![], vec![], 0, &settings());
         assert_eq!(&ids(&p)[..2], &[4, 2]);
         assert_eq!(&ids(&p)[2..], &[1, 5, 3]);
     }
@@ -242,8 +290,8 @@ mod tests {
     fn new_spread_evenly() {
         let due = (1..=6).map(|i| rev(i, i, 0.1 * i as f32)).collect();
         let n = vec![new(101, 101, 0, 0, 0), new(102, 102, 0, 0, 1)];
-        let p = plan(due, n, 0, &settings());
-        let kinds: Vec<_> = p.items.iter().map(|(_, k)| *k).collect();
+        let p = plan(due, n, vec![], 0, &settings());
+        let kinds: Vec<_> = p.items.iter().map(|i| i.kind).collect();
         assert_eq!(kinds.iter().filter(|k| **k == ItemKind::New).count(), 2);
         assert_eq!(kinds[2], ItemKind::New);
         assert_eq!(kinds[5], ItemKind::New);
@@ -252,7 +300,7 @@ mod tests {
     #[test]
     fn adjacent_same_topic_declustered() {
         let due = vec![rev(1, 1, 0.1), rev(2, 1, 0.2), rev(3, 2, 0.3), rev(4, 3, 0.4)];
-        let p = plan(due, vec![], 0, &settings());
+        let p = plan(due, vec![], vec![], 0, &settings());
         let topic_of = |id: i64| if id <= 2 { 1 } else { id - 1 };
         let order = ids(&p);
         for w in order.windows(2) {
@@ -263,8 +311,59 @@ mod tests {
     #[test]
     fn all_same_topic_left_alone() {
         let due = vec![rev(1, 1, 0.1), rev(2, 1, 0.2), rev(3, 1, 0.3)];
-        let p = plan(due, vec![], 0, &settings());
+        let p = plan(due, vec![], vec![], 0, &settings());
         assert_eq!(ids(&p), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn pinned_due_moves_first_without_using_a_slot() {
+        let due = vec![rev(1, 1, 0.3), rev(2, 2, 0.5)];
+        let p = plan(due, vec![new(10, 3, 0, 0, 0), new(11, 4, 0, 0, 1), new(12, 5, 0, 0, 2)], vec![pinned(7, rev(2, 2, 0.5), true)], 0, &settings());
+        assert_eq!((p.items[0].question_id, p.items[0].pin_id, p.items[0].kind), (2, Some(7), ItemKind::Review));
+        assert_eq!(ids(&p).iter().filter(|&&id| id == 2).count(), 1);
+        assert_eq!((p.new_allowed, news(&p).len(), p.pinned_used), (3, 3, 1));
+    }
+
+    #[test]
+    fn pinned_new_uses_a_new_slot() {
+        let n = (10..15).map(|i| new(i, i, 0, 0, i)).collect();
+        let p = plan(vec![], n, vec![pinned(1, new(14, 14, 0, 0, 14), false)], 0, &settings());
+        assert_eq!((p.items[0].question_id, p.items[0].kind), (14, ItemKind::New));
+        assert_eq!(news(&p), vec![14, 10, 11]);
+        assert_eq!(p.new_allowed, 3);
+    }
+
+    #[test]
+    fn pinned_not_due_review_uses_a_slot() {
+        let n = (10..15).map(|i| new(i, i, 0, 0, i)).collect();
+        let p = plan(vec![], n, vec![pinned(1, rev(99, 9, 0.97), false)], 0, &settings());
+        assert_eq!((p.items[0].question_id, p.items[0].kind, p.items[0].pin_id), (99, ItemKind::Review, Some(1)));
+        assert_eq!(news(&p), vec![10, 11]);
+    }
+
+    #[test]
+    fn pins_beyond_slots_wait() {
+        let pins: Vec<_> = (0..5).map(|i| pinned(i, new(20 + i, 20 + i, 0, 0, 0), false)).collect();
+        let n = (20..25).map(|i| new(i, i, 0, 0, 0)).collect();
+        let p = plan(vec![], n, pins, 0, &settings());
+        assert_eq!(ids(&p), vec![20, 21, 22]);
+        assert_eq!((p.pinned_used, p.pinned_waiting), (3, 2));
+    }
+
+    #[test]
+    fn pins_wait_when_new_paused() {
+        let due = (1..=20).map(|i| rev(i, i, 0.5)).collect();
+        let p = plan(due, vec![new(30, 30, 0, 0, 0)], vec![pinned(1, new(30, 30, 0, 0, 0), false)], 0, &settings());
+        assert_eq!((p.pinned_used, p.pinned_waiting, p.new_allowed), (0, 1, 0));
+        assert!(!ids(&p).contains(&30));
+    }
+
+    #[test]
+    fn pinned_prefix_not_declustered() {
+        let pins = vec![pinned(1, new(40, 5, 0, 0, 0), false), pinned(2, new(41, 5, 0, 0, 1), false)];
+        let due = vec![rev(1, 6, 0.3), rev(2, 7, 0.4)];
+        let p = plan(due, vec![new(40, 5, 0, 0, 0), new(41, 5, 0, 0, 1)], pins, 0, &settings());
+        assert_eq!(&ids(&p)[..2], &[40, 41]);
     }
 
     async fn reviewed_new_item(pool: &SqlitePool, q: i64, study_day: &str) {
@@ -287,12 +386,12 @@ mod tests {
         testutil::question(&pool, child).await;
         let today = testutil::day("2026-10-23");
         let now = utc("2026-10-23T18:00:00Z");
-        let (due, new, _) = load_candidates(&pool, &s, today, now).await.unwrap();
+        let (due, new, _, _) = load_candidates(&pool, &s, today, now).await.unwrap();
         assert_eq!((due.len(), new.len()), (1, 1));
         assert_eq!(due[0].topic_depth, 1);
         assert!(due[0].retrievability.unwrap() < 1.0);
         sqlx::query("UPDATE topics SET status = 'archived' WHERE id = ?").bind(parent).execute(&pool).await.unwrap();
-        let (due, new, _) = load_candidates(&pool, &s, today, now).await.unwrap();
+        let (due, new, _, _) = load_candidates(&pool, &s, today, now).await.unwrap();
         assert!(due.is_empty() && new.is_empty());
         assert_eq!(crate::questions::get(&pool, q).await.unwrap().reviews.len(), 1);
     }
@@ -306,7 +405,7 @@ mod tests {
             let q = testutil::question(&pool, t).await;
             sqlx::query("UPDATE questions SET status = ? WHERE id = ?").bind(status).bind(q).execute(&pool).await.unwrap();
         }
-        let (due, new, _) = load_candidates(&pool, &s, testutil::day("2026-10-23"), utc("2026-10-23T18:00:00Z")).await.unwrap();
+        let (due, new, _, _) = load_candidates(&pool, &s, testutil::day("2026-10-23"), utc("2026-10-23T18:00:00Z")).await.unwrap();
         assert!(due.is_empty() && new.is_empty());
     }
 
@@ -322,7 +421,7 @@ mod tests {
         // a review (not a new item) today doesn't count
         let sess = testutil::session(&pool, "2026-10-23").await;
         testutil::review_row(&pool, b, sess, "2026-10-23T19:00:00Z", 3).await;
-        let (_, _, n) = load_candidates(&pool, &s, testutil::day("2026-10-23"), utc("2026-10-23T20:00:00Z")).await.unwrap();
+        let (_, _, _, n) = load_candidates(&pool, &s, testutil::day("2026-10-23"), utc("2026-10-23T20:00:00Z")).await.unwrap();
         assert_eq!(n, 1);
     }
 }
