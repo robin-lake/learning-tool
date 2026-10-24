@@ -3,3 +3,6 @@
 .DS_Store
 
 /target
+
+# Local agent workspaces (plans in progress, mockups)
+.superpowers/
