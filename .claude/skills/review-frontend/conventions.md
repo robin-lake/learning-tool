@@ -1,28 +1,27 @@
 # Frontend conventions (this repo)
 
-The web app starts in milestone 3, so these entries record the **chosen stack** and will be expanded once
-code exists. Each entry says where it was decided. Never reuse an ID.
+Recorded from the chosen stack and the milestone 3 build. Each entry says where it was decided. Never reuse an ID.
 
 ### FE-R1 — React + TypeScript, strict
 **Rule:** The frontend is React with TypeScript in strict mode; no plain `.js` source files.
 **Why:** Chosen for the mature ecosystem; strict typing pairs with generated API types.
 **Violation looks like:** `.js`/`.jsx` source files; `strict` off; `// @ts-ignore` without a reason.
 **Typical severity:** medium
-**Decided:** CLAUDE.md (Frontend). *To expand once code exists.*
+**Decided:** CLAUDE.md (Frontend); milestone 3.
 
 ### FE-R2 — TanStack Router owns routes and the map's zoom path
-**Rule:** Routes are defined with TanStack Router; the map's drill-down path and the history-playback date live in typed route/search params.
+**Rule:** Routes are file-based TanStack Router routes in `web/src/routes/`. Navigable state lives in typed route/search params (`validateSearch`), with optional params present only when set (e.g. topic `all`/`archived`). The map's drill-down path and the history-playback date will follow the same pattern.
 **Why:** Breadcrumbs, back/forward and shareable links fall out of the URL.
 **Violation looks like:** Ad-hoc routing; zoom path or selected day only in component state.
 **Typical severity:** medium
-**Decided:** Dependencies (chosen). *To expand once code exists.*
+**Decided:** Dependencies (chosen); milestone 3.
 
 ### FE-R3 — TanStack Query for server data
-**Rule:** All API data is read and mutated through TanStack Query hooks, with one query-key scheme.
+**Rule:** All API data goes through `web/src/api/queries.ts`: query options (`homeQuery`, `topicQuery`, …) with the `keys` scheme, and mutation hooks that refresh affected queries. Components never call `fetch`; the `api()` client in `client.ts` is the only caller and turns errors into `ApiError` (`kind`, `status`). Failed queries render `ErrorState` with Retry.
 **Why:** One cache, consistent loading and error states, correct invalidation after mutations.
 **Violation looks like:** Manual `fetch` in components; duplicate keys for the same resource.
 **Typical severity:** medium
-**Decided:** Dependencies (chosen). *To expand once code exists.*
+**Decided:** Dependencies (chosen); milestone 3.
 
 ### FE-R4 — API types are generated from Rust
 **Rule:** Types for API data come from `ts-rs` output generated from the Rust structs; never hand-write them.
@@ -36,10 +35,10 @@ code exists. Each entry says where it was decided. Never reuse an ID.
 **Why:** Accessible primitives and a consistent look without one-off styling.
 **Violation looks like:** Hand-rolled dialogs, menus or tooltips; hard-coded hex colors in components.
 **Typical severity:** low
-**Decided:** Dependencies (chosen). *To expand once code exists.*
+**Decided:** Dependencies (chosen); milestone 3.
 
 ### FE-R6 — d3 computes, React renders
-**Rule:** Use `d3-hierarchy` and `d3-scale` for layout math and color scales only; React renders the SVG. No d3 DOM manipulation.
+**Rule:** Use `d3-hierarchy` and `d3-scale` for layout math and color scales only (when the map arrives); React renders. No d3 DOM manipulation. Pure layout logic lives in `web/src/lib/` with unit tests (like `lib/heatmap.ts`).
 **Why:** One rendering model, with animation through `motion`.
 **Violation looks like:** `d3.select(...).append(...)`; mixing d3 and React ownership of the same nodes.
 **Typical severity:** medium
@@ -51,3 +50,10 @@ code exists. Each entry says where it was decided. Never reuse an ID.
 **Violation looks like:** FSRS or retrievability math in TypeScript; client-side reconstruction of history.
 **Typical severity:** high
 **Decided:** CLAUDE.md (Design principles: keep rendering separate from data).
+
+### FE-R8 — Ignore macOS sidecar files everywhere
+**Rule:** Every tool that globs source files (tsconfig, Biome, Vitest, the router plugin) excludes `._*`; `web/.npmrc` keeps `node-linker=hoisted` and `package-import-method=copy`.
+**Why:** The repo can live on exFAT, where macOS writes `._*` files beside every file and symlinks don't exist; a stray `._index.tsx` would otherwise become a route or a compile error.
+**Violation looks like:** A new config or glob that would pick up `._*` files; switching pnpm back to symlinked installs.
+**Typical severity:** medium
+**Decided:** Milestone 3 (Task 7).

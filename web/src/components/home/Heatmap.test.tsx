@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Heatmap } from "./Heatmap";
 
@@ -33,4 +33,12 @@ it("tooltip_shows_grades_and_topics_on_focus", async () => {
   fireEvent.focus(cell);
   expect((await screen.findAllByText("Easy 1 · Good 0 · Hard 1 · Again 3")).length).toBeGreaterThan(0);
   expect(screen.getAllByText("Topics: AC basics, HornResp").length).toBeGreaterThan(0);
+});
+
+it("scrolls_to_show_today", () => {
+  const setScroll = vi.spyOn(Element.prototype, "scrollLeft", "set");
+  vi.spyOn(Element.prototype, "scrollWidth", "get").mockReturnValue(900);
+  wrap(<Heatmap activity={[]} today="2026-10-24" />);
+  expect(setScroll).toHaveBeenCalledWith(900);
+  vi.restoreAllMocks();
 });

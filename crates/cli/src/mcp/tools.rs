@@ -20,10 +20,17 @@ impl LearningServer {
     async fn start_session(&self) -> ToolResult {
         let s = self.settings().await?;
         respond(session::start(&self.pool, &s, Utc::now()).await, |r| {
-            format!(
+            let mut line = format!(
                 "Session {}: {} to answer ({} due, {} new allowed, {} carried over). Streak {}.",
                 r.session_id, r.planned, r.due_total, r.new_allowed, r.backlog_carried, r.streak
-            )
+            );
+            if r.pinned_waiting > 0 {
+                line.push_str(&format!(
+                    " {} pinned question(s) wait for a later day: today's new-question slots are used.",
+                    r.pinned_waiting
+                ));
+            }
+            line
         })
     }
 

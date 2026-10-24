@@ -22,6 +22,8 @@ pub struct SessionStart {
     pub new_allowed: u32,
     /// Overdue reviews held back for later days (backlog recovery).
     pub backlog_carried: u32,
+    /// Pinned questions that didn't fit today's new-question slots; they're asked on a later day.
+    pub pinned_waiting: u32,
     pub streak: u32,
 }
 
@@ -184,6 +186,7 @@ pub async fn start(pool: &SqlitePool, s: &Settings, now: DateTime<Utc>) -> Resul
         due_total: if resumed { due_left } else { queue.due_total },
         new_allowed: if resumed { new_left } else { queue.new_allowed },
         backlog_carried: queue.backlog_carried,
+        pinned_waiting: queue.pinned_waiting,
         streak: crate::stats::streak(pool, s, now).await?,
     })
 }
@@ -728,5 +731,17 @@ mod tests {
         let first = next_question(&p, b.session_id, utc(NOW)).await.unwrap().unwrap();
         assert!(!first.pinned);
         let _ = s;
+    }
+
+    #[tokio::test]
+    async fn start_reports_pins_waiting_for_a_slot() {
+        let (p, _) = setup().await;
+        sqlx::query("UPDATE settings SET value = '0' WHERE key = 'new_per_day'").execute(&p).await.unwrap();
+        let s0 = Settings::load(&p).await.unwrap();
+        let t = testutil::topic(&p, None, "A").await;
+        let q = testutil::question(&p, t).await;
+        crate::pins::pin(&p, q, utc(NOW)).await.unwrap();
+        let st = start(&p, &s0, utc(NOW)).await.unwrap();
+        assert_eq!((st.planned, st.pinned_waiting), (0, 1));
     }
 }

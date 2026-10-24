@@ -15,7 +15,13 @@ if ! command -v pdftotext >/dev/null 2>&1; then
     echo "note: pdftotext not found; /build-topic needs it for PDFs. Install with: brew install poppler ocrmypdf"
 fi
 
-echo "==> Building and installing learning-tool"
+need pnpm "Install it with: brew install pnpm (or corepack enable)."
+
+echo "==> Building the web app"
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
+
+echo "==> Building and installing learning-tool (the web app is embedded in it)"
 cargo install --path crates/cli --locked
 
 echo "==> Registering the MCP server with Claude Code (user scope)"
@@ -44,5 +50,6 @@ Done. Next steps:
   1. Start a new Claude Code session (so it picks up the MCP server and skills).
   2. Run /build-topic to create your first topic.
   3. Run /study each day.
-  Check numbers any time with: learning-tool stats
+  See your progress in the browser with: learning-tool serve
+  Check numbers in the terminal with: learning-tool stats
 MSG

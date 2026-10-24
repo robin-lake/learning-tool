@@ -74,7 +74,8 @@ Robin can pin questions (here or in the web app) to have them asked first next s
   say it'll come first next session.
 - "unpin …" → `mcp__learning-tool__unpin_question`.
 - A pinned question that isn't due uses one of that day's new-question slots, so pinning several can
-  delay new material; extras wait for a later day.
+  delay new material; extras wait for a later day. If `start_session` reports `pinned_waiting`, say so
+  in the greeting (e.g. "1 pinned question waits until tomorrow: today's new slots are used").
 
 ## Tone
 

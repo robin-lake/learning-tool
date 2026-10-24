@@ -7,17 +7,17 @@ It's meant as an Anki replacement with three differences:
 - **Grading is richer than pass/fail.** Harder questions have rubrics, and depth is tracked in mastery levels (L0 orientation → L3 expert).
 - **Your knowledge is visible as a map**, with topics cross-linked to show how ideas connect.
 
-Status: milestone 1 (study loop + topic building) implemented; no web app yet. See [CLAUDE.md](CLAUDE.md) for decisions and [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) for SRS research.
+Status: milestones 1 (study loop + topic building) and 3 (web app, part one) implemented. See [CLAUDE.md](CLAUDE.md) for decisions and [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) for SRS research.
 
 ## Setup
 
-Prerequisites: Rust (rustup), Claude Code, and for PDFs `brew install poppler ocrmypdf`.
+Prerequisites: Rust (rustup), Claude Code, pnpm (`brew install pnpm`), and for PDFs `brew install poppler ocrmypdf`.
 
 ```bash
 ./scripts/install.sh
 ```
 
-This builds and installs the `learning-tool` binary, registers it with Claude Code as a user-scope MCP server, links the skills into `~/.claude/skills/`, and creates the database. Start a new Claude Code session afterwards.
+This builds the web app, builds and installs the `learning-tool` binary with the web app inside it, registers it with Claude Code as a user-scope MCP server, links the skills into `~/.claude/skills/`, and creates the database. Start a new Claude Code session afterwards.
 
 - **Data** lives in `~/.learning-tool/` (set `LEARNING_TOOL_HOME` to move it): `learning.db`, `references/` (original files and extracted text), `backups/`, `logs/`.
 - **Backups:** a snapshot is taken the first time the MCP server starts each day and before any database migration; the 2 most recent are kept. `learning-tool config set backup_dir <path>` points them somewhere else (e.g. a synced folder). Restore with `learning-tool restore <file> --yes` after quitting Claude Code.
@@ -28,6 +28,21 @@ This builds and installs the `learning-tool` binary, registers it with Claude Co
 - `/build-topic <subject>` — outline a subject, gather references, and generate questions.
 - `/refine-questions` — turn your ratings into a better question-writing guide.
 - `learning-tool stats` — today's numbers in the terminal. `learning-tool config get` shows settings (new questions per day, retention target, day rollover hour, timezone…).
+
+## Web app
+
+```bash
+learning-tool serve
+```
+
+This opens your browser at <http://localhost:4747> (Ctrl+C stops it; studying works with or without it running). Use `--port` or `learning-tool config set web_port <n>` to change the port, and `--no-open` to skip the browser.
+
+- **Home:** today's numbers (answered, remaining, streak), a year of daily activity with per-day tooltips (grades and topics), what's coming up (including pinned questions), and what needs attention (leeches, ratings for `/refine-questions`).
+- **Topics:** every topic at any depth, with breadcrumbs, subtopic cards and their progress, and the questions in each. Rename, archive or add subtopics here.
+- **Questions:** the wording, answer and rubric, the schedule, every attempt you've made (your answers, points hit or missed, Claude's feedback), a 1–5 usefulness rating, and editing. Rewording creates a new version and keeps the history.
+- **Pins:** pin a question and it's asked first in your next `/study` session. A pin that isn't due uses one of that day's new-question slots; extras wait a day.
+
+Quizzing stays in Claude Code; the web app is for seeing progress and tending the knowledge base.
 
 ## Principles from the books
 

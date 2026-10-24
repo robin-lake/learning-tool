@@ -1,4 +1,5 @@
 import { format, parseISO } from "date-fns";
+import { useLayoutEffect, useRef } from "react";
 import type { DayActivity } from "@/api/generated/DayActivity";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { buildHeatmap, gradeLine, type HeatCell } from "@/lib/heatmap";
@@ -14,8 +15,14 @@ const heat = ["bg-heat-0", "bg-heat-1", "bg-heat-2", "bg-heat-3", "bg-heat-4"] a
 /** One column per week (Sunday at the top), one focusable button per day with a tooltip. */
 export function Heatmap({ activity, today }: { activity: DayActivity[]; today: string }) {
   const weeks = buildHeatmap(activity, today);
+  const scroller = useRef<HTMLDivElement>(null);
+  // Today is at the right end; start scrolled there when the year doesn't fit.
+  useLayoutEffect(() => {
+    if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth;
+  });
   return (
     <div
+      ref={scroller}
       role="group"
       aria-label="Questions answered per day, last 12 months"
       className="flex gap-[3px] overflow-x-auto pb-1"
