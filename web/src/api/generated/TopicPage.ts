@@ -10,4 +10,8 @@ export type TopicPage = {
 /**
  * `None` for the root (all top-level topics).
  */
-topic: Topic | null, breadcrumbs: Array<TopicRef>, children: Array<TopicCard>, questions: Array<QuestionRow>, links: Array<LinkView>, references: Array<ReferenceRef>, };
+topic: Topic | null, breadcrumbs: Array<TopicRef>, 
+/**
+ * Active questions in this topic and everything below it (the root: all topics).
+ */
+subtree_active_questions: number, children: Array<TopicCard>, questions: Array<QuestionRow>, links: Array<LinkView>, references: Array<ReferenceRef>, };

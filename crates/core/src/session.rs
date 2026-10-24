@@ -734,6 +734,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn not_due_pin_uses_a_slot_for_the_whole_day() {
+        let (p, _) = setup().await;
+        sqlx::query("UPDATE settings SET value = '2' WHERE key = 'new_per_day'").execute(&p).await.unwrap();
+        let s2 = Settings::load(&p).await.unwrap();
+        let t = testutil::topic(&p, None, "A").await;
+        let reviewed = testutil::question(&p, t).await;
+        testutil::due_state(&p, reviewed, "2026-11-30", 30.0).await;
+        for _ in 0..3 {
+            testutil::question(&p, t).await;
+        }
+        crate::pins::pin(&p, reviewed, utc(NOW)).await.unwrap();
+        let a = start(&p, &s2, utc(NOW)).await.unwrap();
+        assert_eq!(a.planned, 2); // the pin plus one new question
+        while let Some(nq) = next_question(&p, a.session_id, utc(NOW)).await.unwrap() {
+            let mut i = input(nq.question_id, all_hit());
+            i.item_id = nq.item_id;
+            record_review(&p, &s2, a.session_id, i, utc(NOW)).await.unwrap();
+        }
+        end(&p, &s2, a.session_id, utc(NOW)).await.unwrap();
+        let b = start(&p, &s2, utc("2026-10-23T19:00:00Z")).await.unwrap();
+        assert_eq!(b.planned, 0, "both of today's slots are used");
+    }
+
+    #[tokio::test]
     async fn start_reports_pins_waiting_for_a_slot() {
         let (p, _) = setup().await;
         sqlx::query("UPDATE settings SET value = '0' WHERE key = 'new_per_day'").execute(&p).await.unwrap();

@@ -362,6 +362,26 @@ pub async fn update(pool: &SqlitePool, id: i64, patch: QuestionPatch, now: DateT
             state.lapses = 0;
             scheduler::save_state(&mut tx, &state).await?;
         }
+        // An active pin follows the question to its new wording, keeping its place in the pin order.
+        let pin: Option<(i64, String)> = sqlx::query_as(
+            "SELECT id, pinned_at FROM pins WHERE question_id = ? AND unpinned_at IS NULL AND used_in_session_id IS NULL",
+        )
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some((pin_id, pinned_at)) = pin {
+            sqlx::query("UPDATE pins SET unpinned_at = ?1, updated_at = ?1 WHERE id = ?2")
+                .bind(&stamp)
+                .bind(pin_id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("INSERT INTO pins (question_id, pinned_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)")
+                .bind(new_id)
+                .bind(&pinned_at)
+                .bind(&stamp)
+                .execute(&mut *tx)
+                .await?;
+        }
         sqlx::query("INSERT INTO question_topics (question_id, topic_id) SELECT ?, topic_id FROM question_topics WHERE question_id = ?")
             .bind(new_id)
             .bind(id)
@@ -385,7 +405,12 @@ pub async fn update(pool: &SqlitePool, id: i64, patch: QuestionPatch, now: DateT
 }
 
 pub async fn set_status(pool: &SqlitePool, id: i64, status: QuestionStatus, now: DateTime<Utc>) -> Result<()> {
-    find(pool, id).await?;
+    let q = find(pool, id).await?;
+    if q.status == QuestionStatus::Retired && status != QuestionStatus::Retired {
+        return Err(Error::Conflict(format!(
+            "question {id} is retired (it was reworded or removed); change its newest version instead"
+        )));
+    }
     sqlx::query("UPDATE questions SET status = ?, updated_at = ? WHERE id = ?")
         .bind(status.as_str())
         .bind(ts(now))
@@ -611,6 +636,29 @@ mod tests {
         assert_eq!((carried.lapses, carried.reps), (0, 6));
         scheduler::rebuild_all(&p, &s).await.unwrap();
         assert_eq!(scheduler::load_state(&p, new.id).await.unwrap(), carried);
+    }
+
+    #[tokio::test]
+    async fn rewording_keeps_the_pin() {
+        let (p, s, t) = setup().await;
+        let id = add(&p, t, vec![nq("old")], QuestionStatus::Active, &s, now()).await.unwrap().ids[0];
+        let original = crate::pins::pin(&p, id, utc("2026-10-23T10:00:00Z")).await.unwrap();
+        let new = update(&p, id, QuestionPatch { prompt: Some("typo fixed".into()), ..Default::default() }, now()).await.unwrap();
+        assert!(crate::pins::is_pinned(&p, new.id).await.unwrap());
+        assert!(!crate::pins::is_pinned(&p, id).await.unwrap());
+        let active = crate::pins::active(&p).await.unwrap();
+        assert_eq!((active.len(), active[0].question_id, active[0].pinned_at), (1, new.id, original.pinned_at));
+    }
+
+    #[tokio::test]
+    async fn retired_questions_cannot_be_revived() {
+        let (p, s, t) = setup().await;
+        let id = add(&p, t, vec![nq("old")], QuestionStatus::Active, &s, now()).await.unwrap().ids[0];
+        update(&p, id, QuestionPatch { prompt: Some("new".into()), ..Default::default() }, now()).await.unwrap();
+        for status in [QuestionStatus::Active, QuestionStatus::Suspended, QuestionStatus::Proposed] {
+            assert!(matches!(set_status(&p, id, status, now()).await, Err(Error::Conflict(_))));
+        }
+        set_status(&p, id, QuestionStatus::Retired, now()).await.unwrap();
     }
 
     #[tokio::test]

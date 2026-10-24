@@ -42,3 +42,15 @@ it("scrolls_to_show_today", () => {
   expect(setScroll).toHaveBeenCalledWith(900);
   vi.restoreAllMocks();
 });
+
+it("does_not_rescroll_on_rerender", () => {
+  const setScroll = vi.spyOn(Element.prototype, "scrollLeft", "set");
+  const { rerender } = wrap(<Heatmap activity={[]} today="2026-10-24" />);
+  rerender(
+    <TooltipProvider delayDuration={0}>
+      <Heatmap activity={[]} today="2026-10-24" />
+    </TooltipProvider>,
+  );
+  expect(setScroll).toHaveBeenCalledTimes(1);
+  vi.restoreAllMocks();
+});

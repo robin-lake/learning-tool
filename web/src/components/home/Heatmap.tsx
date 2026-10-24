@@ -15,15 +15,16 @@ const heat = ["bg-heat-0", "bg-heat-1", "bg-heat-2", "bg-heat-3", "bg-heat-4"] a
 /** One column per week (Sunday at the top), one focusable button per day with a tooltip. */
 export function Heatmap({ activity, today }: { activity: DayActivity[]; today: string }) {
   const weeks = buildHeatmap(activity, today);
-  const scroller = useRef<HTMLDivElement>(null);
-  // Today is at the right end; start scrolled there when the year doesn't fit.
+  const scroller = useRef<HTMLElement>(null);
+  // Today is at the right end: start scrolled there when the year doesn't fit, but leave the
+  // position alone on refetches so someone browsing older weeks isn't snapped back.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run only when the day changes.
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth;
-  });
+  }, [today]);
   return (
-    <div
+    <section
       ref={scroller}
-      role="group"
       aria-label="Questions answered per day, last 12 months"
       className="flex gap-[3px] overflow-x-auto pb-1"
     >
@@ -52,6 +53,6 @@ export function Heatmap({ activity, today }: { activity: DayActivity[]; today: s
           ))}
         </div>
       ))}
-    </div>
+    </section>
   );
 }

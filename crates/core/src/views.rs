@@ -68,6 +68,8 @@ pub struct QuestionRow {
     pub pinned: bool,
     pub recall_now: Option<f32>,
     pub reviews: u32,
+    /// True once the question (or a wording it replaced) has been reviewed.
+    pub studied: bool,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
@@ -94,6 +96,8 @@ pub struct TopicPage {
     /// `None` for the root (all top-level topics).
     pub topic: Option<Topic>,
     pub breadcrumbs: Vec<TopicRef>,
+    /// Active questions in this topic and everything below it (the root: all topics).
+    pub subtree_active_questions: u32,
     pub children: Vec<TopicCard>,
     pub questions: Vec<QuestionRow>,
     pub links: Vec<LinkView>,
@@ -104,14 +108,14 @@ fn visible(card: &TopicCard, include_archived: bool) -> bool {
     include_archived || card.status == TopicStatus::Active
 }
 
-type RowTuple = (i64, i64, i64, String, String, Option<String>, Option<f64>, Option<String>, i64, i64);
+type RowTuple = (i64, i64, i64, String, String, Option<String>, Option<f64>, Option<String>, i64, i64, Option<i64>);
 
 async fn question_rows(pool: &SqlitePool, topic_ids: &[i64], now: DateTime<Utc>) -> Result<Vec<QuestionRow>> {
     let rows: Vec<RowTuple> = sqlx::query_as(
         "SELECT q.id, q.topic_id, q.level, q.prompt, q.status, s.due_on, s.stability, s.last_reviewed_at,
                 EXISTS (SELECT 1 FROM pins p WHERE p.question_id = q.id
                         AND p.unpinned_at IS NULL AND p.used_in_session_id IS NULL),
-                (SELECT count(*) FROM reviews r WHERE r.question_id = q.id)
+                (SELECT count(*) FROM reviews r WHERE r.question_id = q.id), s.reps
          FROM questions q LEFT JOIN question_state s ON s.question_id = q.id
          WHERE q.status <> 'retired' AND q.topic_id IN (SELECT value FROM json_each(?))
          ORDER BY q.level, q.priority, q.id",
@@ -120,7 +124,7 @@ async fn question_rows(pool: &SqlitePool, topic_ids: &[i64], now: DateTime<Utc>)
     .fetch_all(pool)
     .await?;
     rows.into_iter()
-        .map(|(id, topic_id, level, prompt, status, due_on, stability, last, pinned, reviews)| {
+        .map(|(id, topic_id, level, prompt, status, due_on, stability, last, pinned, reviews, reps)| {
             let recall_now = match (stability, last) {
                 (Some(st), Some(last)) => {
                     let days = (now - parse_ts(&last)?).num_seconds().max(0) as f32 / 86_400.0;
@@ -138,6 +142,7 @@ async fn question_rows(pool: &SqlitePool, topic_ids: &[i64], now: DateTime<Utc>)
                 pinned: pinned != 0,
                 recall_now,
                 reviews: reviews as u32,
+                studied: reps.unwrap_or(0) > 0,
             })
         })
         .collect()
@@ -153,10 +158,13 @@ pub async fn topic_page(
 ) -> Result<TopicPage> {
     let Some(id) = id else {
         let roots = topics::tree(pool, None, Some(0), now).await?;
+        let children: Vec<TopicCard> =
+            roots.iter().map(TopicCard::from).filter(|c| visible(c, include_archived)).collect();
         return Ok(TopicPage {
             topic: None,
             breadcrumbs: vec![],
-            children: roots.iter().map(TopicCard::from).filter(|c| visible(c, include_archived)).collect(),
+            subtree_active_questions: children.iter().map(|c| c.active_questions).sum(),
+            children,
             questions: vec![],
             links: vec![],
             references: vec![],
@@ -164,6 +172,7 @@ pub async fn topic_page(
     };
     let detail = topics::get(pool, id).await?;
     let node = topics::tree(pool, Some(id), Some(1), now).await?;
+    let subtree_active_questions = node.first().map(|n| n.active_questions).unwrap_or(0);
     let children = node
         .first()
         .map(|n| n.children.iter().map(TopicCard::from).filter(|c| visible(c, include_archived)).collect())
@@ -182,6 +191,7 @@ pub async fn topic_page(
     }
     Ok(TopicPage {
         breadcrumbs: detail.path.iter().map(|t| TopicRef { id: t.id, name: t.name.clone() }).collect(),
+        subtree_active_questions,
         children,
         questions: question_rows(pool, &topic_ids, now).await?,
         links,
@@ -298,6 +308,32 @@ mod tests {
         topics::update(&p, child, TopicPatch { status: Some(TopicStatus::Archived), ..Default::default() }, now()).await.unwrap();
         assert!(topic_page(&p, Some(root), false, false, now()).await.unwrap().children.is_empty());
         assert_eq!(topic_page(&p, Some(root), false, true, now()).await.unwrap().children.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn topic_page_counts_active_questions_in_subtree() {
+        let (p, root, child, _) = tree().await;
+        testutil::question(&p, root).await;
+        let suspended = testutil::question(&p, root).await;
+        sqlx::query("UPDATE questions SET status = 'suspended' WHERE id = ?").bind(suspended).execute(&p).await.unwrap();
+        testutil::question(&p, child).await;
+        for all in [false, true] {
+            let page = topic_page(&p, Some(root), all, false, now()).await.unwrap();
+            assert_eq!(page.subtree_active_questions, 2, "all={all}");
+        }
+        let root_page = topic_page(&p, None, false, false, now()).await.unwrap();
+        assert_eq!(root_page.subtree_active_questions, 2);
+    }
+
+    #[tokio::test]
+    async fn reworded_question_row_is_not_new() {
+        let (p, root, _, _) = tree().await;
+        let q = testutil::question(&p, root).await;
+        testutil::due_state(&p, q, "2026-10-30", 5.0).await;
+        let new = crate::questions::update(&p, q, QuestionPatch { prompt: Some("v2".into()), ..Default::default() }, now()).await.unwrap();
+        let page = topic_page(&p, Some(root), false, false, now()).await.unwrap();
+        let row = page.questions.iter().find(|r| r.id == new.id).unwrap();
+        assert!(row.studied && row.due_on.is_some());
     }
 
     #[tokio::test]

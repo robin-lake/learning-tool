@@ -17,23 +17,28 @@ export function RatingBox({ questionId, ratings }: { questionId: number; ratings
       <div className="text-xs uppercase tracking-wide text-muted-foreground">
         How useful is this question?
       </div>
-      <div role="radiogroup" aria-label="Usefulness" className="flex gap-1">
+      <fieldset className="flex gap-1">
+        <legend className="sr-only">Usefulness, 1 to 5</legend>
         {[1, 2, 3, 4, 5].map((n) => (
-          <button
+          <label
             key={n}
-            type="button"
-            role="radio"
-            aria-checked={stars === n}
-            aria-label={`${n} of 5`}
-            onClick={() => setStars(n)}
-            className="rounded p-0.5 focus-visible:ring-2 focus-visible:ring-ring"
+            className="cursor-pointer rounded p-0.5 has-focus-visible:ring-2 has-focus-visible:ring-ring"
           >
+            <input
+              type="radio"
+              name={`usefulness-${questionId}`}
+              value={n}
+              checked={stars === n}
+              onChange={() => setStars(n)}
+              aria-label={`${n} of 5`}
+              className="sr-only"
+            />
             <Star
               className={cn("size-5", n <= stars ? "fill-amber-400 text-amber-500" : "text-muted-foreground")}
             />
-          </button>
+          </label>
         ))}
-      </div>
+      </fieldset>
       <Label htmlFor={`rating-feedback-${questionId}`} className="text-sm font-normal">
         Why? (optional)
       </Label>

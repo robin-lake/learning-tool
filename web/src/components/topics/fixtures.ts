@@ -36,5 +36,6 @@ export const row = (over: Partial<QuestionRow> = {}): QuestionRow => ({
   pinned: false,
   recall_now: null,
   reviews: 0,
+  studied: false,
   ...over,
 });

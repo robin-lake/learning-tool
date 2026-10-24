@@ -29,3 +29,9 @@ it("long_prompt_is_truncated_with_title", async () => {
   expect(link.className).toContain("truncate");
   expect(link).toHaveAttribute("href", "/questions/1");
 });
+
+it("studied_row_not_labeled_new", async () => {
+  renderWithApp(<QuestionTable rows={[row({ reviews: 0, studied: true, due_on: "2026-10-30" })]} />);
+  expect(await screen.findByText("active")).toBeInTheDocument();
+  expect(screen.queryByText("new")).toBeNull();
+});

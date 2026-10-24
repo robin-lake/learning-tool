@@ -55,7 +55,7 @@ export function QuestionTable({ rows }: { rows: QuestionRow[] }) {
             </TableCell>
             <TableCell>
               <Badge variant={r.status === "active" ? "outline" : "secondary"}>
-                {r.reviews === 0 && r.status === "active" ? "new" : r.status}
+                {!r.studied && r.status === "active" ? "new" : r.status}
               </Badge>
             </TableCell>
             <TableCell className="text-muted-foreground">

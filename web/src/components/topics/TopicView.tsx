@@ -38,7 +38,6 @@ export function TopicView({ id, search }: { id: number | null; search: TopicSear
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const page = q.data;
   const topic = page.topic;
-  const total = page.children.reduce((n, c) => n + c.active_questions, 0) + page.questions.length;
 
   return (
     <div className="space-y-6">
@@ -53,7 +52,7 @@ export function TopicView({ id, search }: { id: number | null; search: TopicSear
         {topic && (
           <p className="text-sm text-muted-foreground">
             Target {LEVEL_NAMES[topic.target_level]} · {topic.status === "archived" ? "archived · " : ""}
-            {total} questions shown here and below
+            {page.subtree_active_questions} active questions here and below
             {topic.description && ` · ${topic.description}`}
           </p>
         )}

@@ -4,4 +4,8 @@ import type { QuestionStatus } from "./QuestionStatus";
 /**
  * A question in a list: everything except the answer and rubric.
  */
-export type QuestionRow = { id: number, topic_id: number, level: number, prompt: string, status: QuestionStatus, due_on: string | null, pinned: boolean, recall_now: number | null, reviews: number, };
+export type QuestionRow = { id: number, topic_id: number, level: number, prompt: string, status: QuestionStatus, due_on: string | null, pinned: boolean, recall_now: number | null, reviews: number, 
+/**
+ * True once the question (or a wording it replaced) has been reviewed.
+ */
+studied: boolean, };

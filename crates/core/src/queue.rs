@@ -8,6 +8,7 @@ use crate::scheduler::retrievability;
 use crate::settings::Settings;
 use crate::types::{parse_ts, str_enum};
 
+/// `New` means "uses one of the day's new-question slots": a new question, or a pinned question that isn't due.
 str_enum!(ItemKind { Review => "review", New => "new", Requeue => "requeue" });
 
 /// Retrievability at or above which a review can open the session as an easy warm-up.
@@ -73,8 +74,8 @@ pub fn plan(
         } else if slots > 0 {
             slots -= 1;
             pins_in_slots += 1;
-            let kind = if p.candidate.retrievability.is_none() { ItemKind::New } else { ItemKind::Review };
-            prefix.push(PlannedItem { question_id: id, kind, pin_id: Some(p.pin_id) });
+            // "New" here means "uses a new-question slot", so it counts toward the day's cap.
+            prefix.push(PlannedItem { question_id: id, kind: ItemKind::New, pin_id: Some(p.pin_id) });
         } else {
             pinned_waiting += 1;
         }
@@ -337,8 +338,9 @@ mod tests {
     fn pinned_not_due_review_uses_a_slot() {
         let n = (10..15).map(|i| new(i, i, 0, 0, i)).collect();
         let p = plan(vec![], n, vec![pinned(1, rev(99, 9, 0.97), false)], 0, &settings());
-        assert_eq!((p.items[0].question_id, p.items[0].kind, p.items[0].pin_id), (99, ItemKind::Review, Some(1)));
-        assert_eq!(news(&p), vec![10, 11]);
+        // It uses a new-question slot, so it's planned as "new" and counts toward today's cap.
+        assert_eq!((p.items[0].question_id, p.items[0].kind, p.items[0].pin_id), (99, ItemKind::New, Some(1)));
+        assert_eq!(news(&p), vec![99, 10, 11]);
     }
 
     #[test]
