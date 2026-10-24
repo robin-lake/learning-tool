@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod grading;
 pub mod questions;
+pub mod queue;
 pub mod scheduler;
 pub mod settings;
 pub mod topics;

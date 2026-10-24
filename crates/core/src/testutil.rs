@@ -13,7 +13,7 @@ pub fn day(s: &str) -> NaiveDate {
 
 pub async fn topic(pool: &SqlitePool, parent: Option<i64>, name: &str) -> i64 {
     sqlx::query_scalar(
-        "INSERT INTO topics (parent_id, name, slug, created_at, updated_at) VALUES (?, ?, ?, 'x', 'x') RETURNING id",
+        "INSERT INTO topics (parent_id, name, slug, created_at, updated_at) VALUES (?, ?, ?, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00') RETURNING id",
     )
     .bind(parent)
     .bind(name)
@@ -27,7 +27,7 @@ pub async fn topic(pool: &SqlitePool, parent: Option<i64>, name: &str) -> i64 {
 pub async fn question(pool: &SqlitePool, topic_id: i64) -> i64 {
     sqlx::query_scalar(
         r#"INSERT INTO questions (topic_id, level, prompt, answer, rubric, created_at, updated_at)
-           VALUES (?, 0, 'q', 'a', '[{"id":"r1","point":"p","weight":1,"essential":false}]', 'x', 'x') RETURNING id"#,
+           VALUES (?, 0, 'q', 'a', '[{"id":"r1","point":"p","weight":1,"essential":false}]', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00') RETURNING id"#,
     )
     .bind(topic_id)
     .fetch_one(pool)
@@ -37,7 +37,7 @@ pub async fn question(pool: &SqlitePool, topic_id: i64) -> i64 {
 
 pub async fn session(pool: &SqlitePool, study_day: &str) -> i64 {
     sqlx::query_scalar(
-        "INSERT INTO sessions (kind, study_day, started_at, created_at, updated_at) VALUES ('main', ?, 'x', 'x', 'x') RETURNING id",
+        "INSERT INTO sessions (kind, study_day, started_at, created_at, updated_at) VALUES ('main', ?, 'x', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00') RETURNING id",
     )
     .bind(study_day)
     .fetch_one(pool)
