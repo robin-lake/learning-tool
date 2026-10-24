@@ -10,13 +10,24 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 - **Storage:** a local SQLite database. Single user, runs on the user's machine.
 - **Frontend:** React + TypeScript (Vite, TanStack, shadcn). The goal is a tool to actually use, so pick the mature ecosystem. API types are generated from the Rust structs (e.g. `ts-rs` / `specta`) rather than hand-written. The 3D stretch goal may be a Rust/WASM module embedded in the React app.
 - **Quizzing happens in Claude Code**, not in the web app. Claude reads due questions and records grades against the local database (likely via an MCP server sharing a core crate with the web backend). The web app is for tracking, visualization, and project features.
-- **Projects page** (learning while building real projects) is a separate, later plan. Don't design it into v1 beyond leaving room for it.
+- **Claude writes questions with the user.** A "build a topic" skill: Claude finds references (PDFs, articles, textbooks, best-practice guides), stores them, extracts their essence, and generates questions. New questions go straight into the main program by default; reviewing them first is opt-in.
+- **References:** metadata in SQLite; original files in a folder beside the DB; text extracted once to a text/Markdown file (with page markers) and indexed with SQLite FTS5, so Claude never re-reads PDFs. Questions cite their reference and location.
+- **Grading:** Claude grades free-form answers against a per-question rubric (harder questions → more rubric points needed to pass), then maps the score to again/hard/good/easy deterministically. Rubric results are stored too.
+- **Mastery levels L0–L3** on every question, defined by ability rather than content: L0 orientation (what/why, plain English), L1 working knowledge (concepts, qualitative trade-offs), L2 applied (formulas, worked calculations, using the tools), L3 expert (design decisions under constraints, diagnosis, critique). Topics carry a long-term target level. Subtopics = breadth, levels = depth. *How levels and nesting interact is expected to need tuning — treat as provisional.*
+- **Main program vs. projects:** one topic graph and one review log for everything. Each topic/question is either in the **main program** (high bar: "matters to me in 10 years") or **project-scoped**. Projects link to existing general topics (optionally requiring a deeper level) and can own project-only topics. When a project ends, its items are promoted into the main program or archived (unscheduled, history kept).
+- **Two study skills:** `/study` = daily main-program session only (drives home-page counts and streak). `/study-project <name>` = one project's questions, on demand. Project scheduling is gentler (lower desired retention / capped intervals).
+- **Scheduler:** FSRS (`fsrs-rs`). Daily cap on new main-program questions; reviews are never capped.
+- **Projects page** UI is a separate, later plan; the data model above should leave room for it.
 
 ## Open decisions
 
-- **Claude ↔ database interface:** MCP server vs. CLI + skill; what tools it exposes.
-- **Who writes questions and who grades:** Claude, the user, or both.
-- **Scheduling algorithm:** FSRS (leaning) vs. SM-2.
+- **Claude ↔ database interface:** MCP server vs. CLI + skill; exact tools exposed.
+- **Detailed schema** for topics, cross-links, questions, rubrics, references, reviews.
+
+## Design foundations
+
+- [README.md](README.md) — core principles of *Ultralearning*, *Make It Stick*, and *The Procrastination Equation*, with what each means for the app. Check design choices against these.
+- [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) — SRS/Anki/FSRS lessons and their implications. Consult before changing scheduling, grading, workload, or question-writing behavior.
 - **Topic schema details** (see below).
 
 ## Product outline
