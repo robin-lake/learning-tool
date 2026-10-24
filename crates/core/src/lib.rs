@@ -7,7 +7,9 @@ pub mod grading;
 pub mod questions;
 pub mod queue;
 pub mod scheduler;
+pub mod session;
 pub mod settings;
+pub mod stats;
 pub mod topics;
 pub mod types;
 
