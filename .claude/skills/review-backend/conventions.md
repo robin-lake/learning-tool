@@ -12,7 +12,7 @@ How this codebase does things. Each entry says where it was decided. Never reuse
 ### BE-R2 — No hidden clock
 **Rule:** Core functions take `now: DateTime<Utc>` as a parameter; only binaries call `Utc::now()`.
 **Why:** Deterministic tests (study-day rollover, DST, streaks) and replayable logic.
-**Violation looks like:** `Utc::now()`, `Local::now()` or `SystemTime::now()` in `crates/core/src` outside tests (the restore timestamp in `backup.rs` is the one deliberate exception).
+**Violation looks like:** `Utc::now()`, `Local::now()` or `SystemTime::now()` in `crates/core/src` outside tests. Accepted exceptions: `db::open` (seed and pre-migrate backup timestamps) and `backup::restore` (renamed-file suffix), which run at the edge.
 **Typical severity:** medium
 **Decided:** Milestone 1 plan (Architecture).
 
