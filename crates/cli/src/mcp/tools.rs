@@ -2,7 +2,7 @@ use chrono::Utc;
 use learning_core::questions::QuestionStatus;
 use learning_core::topics::{NewTopic, TopicPatch};
 use learning_core::references::NewSource;
-use learning_core::{guide, questions, references, session, stats, topics};
+use learning_core::{guide, pins, questions, references, session, stats, topics};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{ErrorData as McpError, tool, tool_router};
@@ -30,7 +30,13 @@ impl LearningServer {
     #[tool(description = "Get the next question in a session, or null when the session is done. The rubric and answer are for grading only — never show them to the user before they answer. Calling again before record_review returns the same question.")]
     async fn next_question(&self, Parameters(p): Parameters<SessionId>) -> ToolResult {
         respond(session::next_question(&self.pool, p.session_id, Utc::now()).await, |r| match r {
-            Some(q) => format!("Question {} of session ({} remaining, level L{}).", q.position, q.remaining, q.level),
+            Some(q) => format!(
+                "Question {} of session ({} remaining, level L{}){}.",
+                q.position,
+                q.remaining,
+                q.level,
+                if q.pinned { ", pinned by Robin" } else { "" }
+            ),
             None => "Session complete: no questions left. Call end_session.".into(),
         })
     }
@@ -69,6 +75,18 @@ impl LearningServer {
     async fn rate_question(&self, Parameters(p): Parameters<RateQuestion>) -> ToolResult {
         let r = guide::rate(&self.pool, p.question_id, p.usefulness, p.feedback, p.classification, p.review_id, Utc::now()).await;
         respond(r, |id| format!("Rating {id} recorded."))
+    }
+
+    #[tool(description = "Pin a question so it's asked first in Robin's next study session. A pinned question that isn't due uses one of that day's new-question slots; extras wait for a later day.")]
+    async fn pin_question(&self, Parameters(p): Parameters<QuestionId>) -> ToolResult {
+        respond(pins::pin(&self.pool, p.question_id, Utc::now()).await, |pin| {
+            format!("Question {} pinned (pin {}); it will come first in the next session.", pin.question_id, pin.id)
+        })
+    }
+
+    #[tool(description = "Unpin a question. Its pin history is kept.")]
+    async fn unpin_question(&self, Parameters(p): Parameters<QuestionId>) -> ToolResult {
+        respond(pins::unpin(&self.pool, p.question_id, Utc::now()).await, |_| format!("Question {} unpinned.", p.question_id))
     }
 
     #[tool(description = "Today's numbers: answered, remaining, new introduced, due tomorrow, streak.")]

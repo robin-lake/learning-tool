@@ -43,6 +43,11 @@ pub struct RateQuestion {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct QuestionId {
+    pub question_id: i64,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct Id {
     pub id: i64,
 }

@@ -29,7 +29,8 @@ and keep it brisk and encouraging.
    over the next few days.
 2. Loop:
    1. Call `mcp__learning-tool__next_question` with the `session_id`. If it returns null, go to step 3.
-   2. **Ask.** Show the topic path briefly and the `prompt`. You may rephrase the surface wording so
+   2. **Ask.** Show the topic path briefly and the `prompt`. If `pinned` is true, mention in a few
+      words that this is one Robin pinned. You may rephrase the surface wording so
       Robin isn't just recognizing the prompt, but keep the target identical (same idea, same level,
       same rubric). For L2/L3 questions, invite a worked answer.
    3. **Wait for the answer.** If Robin asks for a hint, give a small nudge that doesn't contain a
@@ -64,6 +65,16 @@ Robin's words, `review_id` if it follows a review). Infer `classification` from 
 
 Don't ask for a rating after every question. At most, when an answer suggests the question was poor
 (ambiguous, trivial, mis-leveled), you may invite one in a few words.
+
+## Pins
+
+Robin can pin questions (here or in the web app) to have them asked first next session.
+
+- "pin that one" / "pin this" → `mcp__learning-tool__pin_question` with the current `question_id`;
+  say it'll come first next session.
+- "unpin …" → `mcp__learning-tool__unpin_question`.
+- A pinned question that isn't due uses one of that day's new-question slots, so pinning several can
+  delay new material; extras wait for a later day.
 
 ## Tone
 

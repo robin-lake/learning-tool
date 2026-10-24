@@ -6,8 +6,8 @@ use rmcp::transport::TokioChildProcess;
 use rmcp::ServiceExt;
 use serde_json::{Value, json};
 
-const TOOLS: [&str; 27] = [
-    "start_session", "next_question", "skip_question", "record_review", "end_session", "rate_question",
+const TOOLS: [&str; 29] = [
+    "start_session", "next_question", "skip_question", "record_review", "end_session", "rate_question", "pin_question", "unpin_question",
     "list_topics", "get_topic", "create_topic", "update_topic", "link_topics",
     "add_questions", "update_question", "set_question_status", "link_questions", "get_question",
     "today_stats", "add_reference", "attach_reference_file", "link_reference_topics", "search_references", "get_reference", "read_reference",
@@ -46,11 +46,18 @@ async fn full_session_and_references_over_stdio() {
     assert!(!err, "{added}");
     assert_eq!(added["forecast"]["new_active"], 2);
 
+    let pinned_id = added["ids"][1].as_i64().unwrap();
+    let (err, pin) = call(&client, "pin_question", json!({"question_id": pinned_id})).await;
+    assert!(!err, "{pin}");
+
     let (_, start) = call(&client, "start_session", json!({})).await;
     assert_eq!(start["planned"], 2);
     let sid = start["session_id"].as_i64().unwrap();
-    for _ in 0..2 {
+    for round in 0..2 {
         let (_, nq) = call(&client, "next_question", json!({"session_id": sid})).await;
+        if round == 0 {
+            assert_eq!((nq["question_id"].as_i64(), nq["pinned"].as_bool()), (Some(pinned_id), Some(true)), "{nq}");
+        }
         let qid = nq["question_id"].as_i64().unwrap();
         let (err, out) = call(&client, "record_review", json!({
             "session_id": sid,
