@@ -5,5 +5,7 @@ pub mod db;
 pub mod error;
 pub mod grading;
 pub mod settings;
+pub mod topics;
+pub mod types;
 
 pub use error::{Error, Result};
