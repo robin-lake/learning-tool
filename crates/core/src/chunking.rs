@@ -19,11 +19,30 @@ fn heading(line: &str) -> Option<(usize, &str)> {
     }
 }
 
-/// Splits extracted text into searchable chunks: one per page for `pdftotext` output (form feeds),
+/// The page number in a `=== PDF page N ===` marker line, as written by some PDF-to-text conversions.
+fn page_marker(line: &str) -> Option<u32> {
+    line.trim().strip_prefix("=== PDF page ")?.strip_suffix("===")?.trim().parse().ok()
+}
+
+/// Splits extracted text into searchable chunks: one per page for `pdftotext` output (form feeds,
+/// or `=== PDF page N ===` marker lines),
 /// one per heading for Markdown, otherwise a single chunk; long chunks are split further.
 pub fn chunk(text: &str, max_chars: usize) -> Vec<Chunk> {
     let mut sections: Vec<(String, String)> = vec![];
-    if text.contains('\x0c') {
+    if text.lines().any(|l| page_marker(l).is_some()) {
+        // Text before the first marker is conversion notes, not page content.
+        let mut current: Option<(String, String)> = None;
+        for line in text.lines() {
+            if let Some(n) = page_marker(line) {
+                sections.extend(current.take());
+                current = Some((format!("p. {n}"), String::new()));
+            } else if let Some((_, body)) = current.as_mut() {
+                body.push_str(line);
+                body.push('\n');
+            }
+        }
+        sections.extend(current);
+    } else if text.contains('\x0c') {
         for (i, page) in text.split('\x0c').enumerate() {
             sections.push((format!("p. {}", i + 1), page.to_string()));
         }
@@ -91,6 +110,14 @@ mod tests {
         let c = chunk("a\x0cb\x0c\x0cd", 4000);
         assert_eq!(locs(&c), ["p. 1", "p. 2", "p. 4"]);
         assert_eq!(c[2].text, "d");
+    }
+
+    #[test]
+    fn page_markers_give_page_locators() {
+        let text = "# Converted manual\nintro notes\n=== PDF page 1 ===\ncover\n=== PDF page 3 ===\ncontents\n# A heading inside a page\nmore";
+        let c = chunk(text, 4000);
+        assert_eq!(locs(&c), ["p. 1", "p. 3"]);
+        assert!(c[1].text.contains("contents") && c[1].text.contains("more"));
     }
 
     #[test]

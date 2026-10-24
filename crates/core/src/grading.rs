@@ -108,7 +108,8 @@ pub fn score(r: &Rubric, results: &[PointResult]) -> Result<Score> {
     }
     let hit = |id: &str| results.iter().any(|res| res.id == id && res.hit);
     let total: f32 = r.0.iter().map(|p| p.weight).sum();
-    let got: f32 = r.0.iter().filter(|p| hit(&p.id)).map(|p| p.weight).sum();
+    // `+ 0.0` turns the -0.0 that an empty float sum produces into 0.0.
+    let got: f32 = r.0.iter().filter(|p| hit(&p.id)).map(|p| p.weight).sum::<f32>() + 0.0;
     let all_hit = r.0.iter().all(|p| hit(&p.id));
     Ok(Score {
         score: if all_hit { 1.0 } else { (got / total).clamp(0.0, 1.0) },
@@ -196,6 +197,13 @@ mod tests {
         ];
         assert_eq!(score(&r, &res).unwrap().score, 1.0);
     }
+    #[test]
+    fn nothing_hit_scores_positive_zero() {
+        // Summing an empty float iterator gives -0.0, which displays as "-0%".
+        let s = score(&rubric(), &hits([false, false, false])).unwrap();
+        assert!(s.score == 0.0 && s.score.is_sign_positive(), "{:?}", s.score);
+    }
+
     #[test]
     fn score_rejects_missing_or_extra_ids() {
         let mut res = hits([true, true, true]);

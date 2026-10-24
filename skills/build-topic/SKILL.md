@@ -33,13 +33,25 @@ grow later. Let Robin adjust it, then create the topics with `mcp__learning-tool
 
 Find high-quality sources: textbooks and lecture notes, well-regarded articles, official
 documentation, best-practice guides. Prefer a few excellent sources over many weak ones. Also accept
-files Robin provides. For each reference:
+files Robin provides.
+
+Some sites block automated downloads (an HTTP 403, or a bot-check page instead of the article). Never
+try to get around that. Use an openly licensed source that covers the same ground instead:
+OpenStax textbooks (CC BY, e.g. *University Physics*), Wikipedia (CC BY-SA), LibreTexts, MIT
+OpenCourseWare. Or ask Robin to save the page. Open licenses are also the safest to quote from.
+
+For each reference:
 
 1. Download into a temporary directory of its own (e.g. `mktemp -d`), never into the repo.
 2. Extract text:
    - PDF: `pdftotext -layout in.pdf out.txt` (keeps page breaks, so locators become "p. N").
      If that yields almost no text, the PDF is scanned: run `ocrmypdf in.pdf ocr.pdf` first.
-   - Web article: save the readable content as Markdown with its headings (locators become heading paths).
+   - Web article: save the original page with its real extension (`page.html`, not an extensionless
+     file) and the readable content as Markdown with its headings (locators become heading paths).
+     Drop navigation, footers and reference lists, and keep each formula once: Wikipedia's HTML
+     carries both a LaTeX and a fallback copy of every formula.
+   - Text already converted elsewhere with `=== PDF page N ===` marker lines is fine as is; each
+     marker becomes a "p. N" locator.
 3. Write a 2–4 sentence `summary`: the essence and what it's good for.
 4. Call `mcp__learning-tool__add_reference` with absolute paths (`source_file`, `text_file`), `kind`,
    `title`, `authors`, `url`, `summary`, and the relevant `topic_ids`.
