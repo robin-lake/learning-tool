@@ -14,13 +14,14 @@ export function renderWithApp(ui: ReactNode) {
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={0}>
         <RouterProvider router={router} />
       </TooltipProvider>
     </QueryClientProvider>,
   );
+  return { ...result, router };
 }
 
 /** A fetch mock that answers every call with `status` and `body`, recording calls. */
