@@ -4,8 +4,12 @@ pub mod clock;
 pub mod db;
 pub mod error;
 pub mod grading;
+pub mod scheduler;
 pub mod settings;
 pub mod topics;
 pub mod types;
 
 pub use error::{Error, Result};
+
+#[cfg(test)]
+mod testutil;

@@ -357,12 +357,24 @@ pub async fn tree(
         .collect())
 }
 
-/// Current retrievability of each reviewed active question, grouped by topic. Filled in by the scheduler task.
+/// Current retrievability of each reviewed active question, grouped by topic.
 pub(crate) async fn retrievability_by_topic(
-    _pool: &SqlitePool,
-    _now: DateTime<Utc>,
+    pool: &SqlitePool,
+    now: DateTime<Utc>,
 ) -> Result<HashMap<i64, Vec<f32>>> {
-    Ok(HashMap::new())
+    let rows: Vec<(i64, f64, String)> = sqlx::query_as(
+        "SELECT q.topic_id, s.stability, s.last_reviewed_at
+         FROM questions q JOIN question_state s ON s.question_id = q.id
+         WHERE q.status = 'active' AND s.stability IS NOT NULL AND s.last_reviewed_at IS NOT NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut out: HashMap<i64, Vec<f32>> = HashMap::new();
+    for (topic, stability, last) in rows {
+        let days = (now - crate::types::parse_ts(&last)?).num_seconds().max(0) as f32 / 86_400.0;
+        out.entry(topic).or_default().push(crate::scheduler::retrievability(stability as f32, days));
+    }
+    Ok(out)
 }
 
 pub async fn link(
