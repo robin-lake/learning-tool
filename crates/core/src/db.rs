@@ -7,6 +7,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 pub use sqlx::SqlitePool;
 
 use crate::Result;
+use crate::settings::Settings;
 
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
@@ -70,9 +71,29 @@ pub async fn open(path: &Path) -> Result<SqlitePool> {
         .max_connections(4)
         .connect_with(connect_options(path)?)
         .await?;
+    if has_pending_migrations(&pool).await? {
+        let dirs = DataDir { root: path.parent().map(Path::to_path_buf).unwrap_or_else(|| ".".into()) };
+        let settings = Settings::load(&pool).await.unwrap_or_default();
+        crate::backup::backup(&pool, &dirs, &settings, "pre-migrate", Utc::now()).await?;
+    }
     MIGRATOR.run(&pool).await?;
     seed(&pool).await?;
     Ok(pool)
+}
+
+/// True if this is an existing, previously migrated database with migrations still to apply.
+async fn has_pending_migrations(pool: &SqlitePool) -> Result<bool> {
+    let tracked: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'")
+            .fetch_one(pool)
+            .await?;
+    if tracked == 0 {
+        return Ok(false);
+    }
+    let applied: Vec<i64> = sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success = 1")
+        .fetch_all(pool)
+        .await?;
+    Ok(MIGRATOR.iter().any(|m| !m.migration_type.is_down_migration() && !applied.contains(&m.version)))
 }
 
 async fn seed(pool: &SqlitePool) -> Result<()> {

@@ -1,5 +1,6 @@
 //! Core logic for the learning tool: storage, scheduling, sessions, references and the question guide.
 
+pub mod backup;
 pub mod chunking;
 pub mod clock;
 pub mod db;

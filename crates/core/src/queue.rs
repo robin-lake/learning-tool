@@ -164,18 +164,7 @@ mod tests {
     use crate::testutil::{self, utc};
 
     fn settings() -> Settings {
-        Settings {
-            new_per_day: 3,
-            new_pause_review_threshold: 20,
-            backlog_daily_limit: 30,
-            session_target: 10,
-            desired_retention_main: 0.9,
-            leech_lapses: 6,
-            day_rollover_hour: 4,
-            timezone: crate::settings::TzSetting::System,
-            backup_dir: None,
-            backups_keep: 2,
-        }
+        Settings::default()
     }
     fn rev(id: i64, topic: i64, r: f32) -> Candidate {
         Candidate { question_id: id, topic_id: topic, topic_depth: 0, topic_position: 0, level: 0, priority: 0, retrievability: Some(r) }
