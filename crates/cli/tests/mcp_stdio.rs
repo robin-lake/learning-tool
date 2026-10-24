@@ -6,8 +6,8 @@ use rmcp::transport::TokioChildProcess;
 use rmcp::ServiceExt;
 use serde_json::{Value, json};
 
-const TOOLS: [&str; 24] = [
-    "start_session", "next_question", "record_review", "end_session", "rate_question",
+const TOOLS: [&str; 25] = [
+    "start_session", "next_question", "skip_question", "record_review", "end_session", "rate_question",
     "list_topics", "get_topic", "create_topic", "update_topic", "link_topics",
     "add_questions", "update_question", "set_question_status", "link_questions", "get_question",
     "today_stats", "add_reference", "search_references", "get_reference", "read_reference",
@@ -51,10 +51,10 @@ async fn full_session_and_references_over_stdio() {
     let sid = start["session_id"].as_i64().unwrap();
     for _ in 0..2 {
         let (_, nq) = call(&client, "next_question", json!({"session_id": sid})).await;
-        let qid = nq["question"]["id"].as_i64().unwrap();
+        let qid = nq["question_id"].as_i64().unwrap();
         let (err, out) = call(&client, "record_review", json!({
             "session_id": sid,
-            "review": {"question_id": qid, "rubric_result": [{"id": "r1", "hit": true}], "fluent": true,
+            "review": {"item_id": nq["item_id"], "question_id": qid, "rubric_result": [{"id": "r1", "hit": true}], "fluent": true,
                        "user_answer": "a", "asked_prompt": "q"}
         })).await;
         assert!(!err, "{out}");
@@ -79,12 +79,33 @@ async fn full_session_and_references_over_stdio() {
     let sid2 = again["session_id"].as_i64().unwrap();
     let (err, msg) = call(&client, "record_review", json!({
         "session_id": sid2,
-        "review": {"question_id": 1, "rubric_result": [{"id": "zz", "hit": true}], "user_answer": "a", "asked_prompt": "q"}
+        "review": {"item_id": 1, "question_id": 1, "rubric_result": [{"id": "zz", "hit": true}], "user_answer": "a", "asked_prompt": "q"}
     })).await;
     assert!(err);
     assert!(msg.to_string().contains("zz"), "{msg}");
 
     let backups: Vec<_> = std::fs::read_dir(home.path().join("backups")).unwrap().flatten().collect();
     assert_eq!(backups.len(), 1);
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn server_starts_when_backup_dir_is_unwritable() {
+    let home = tempfile::tempdir().unwrap();
+    let bin = env!("CARGO_BIN_EXE_learning-tool");
+    let blocker = home.path().join("not-a-dir");
+    std::fs::write(&blocker, b"file").unwrap();
+    let status = std::process::Command::new(bin)
+        .args(["config", "set", "backup_dir", blocker.join("backups").to_str().unwrap()])
+        .env("LEARNING_TOOL_HOME", home.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let mut cmd = tokio::process::Command::new(bin);
+    cmd.arg("mcp").env("LEARNING_TOOL_HOME", home.path());
+    let client = ().serve(TokioChildProcess::new(cmd).unwrap()).await.expect("server starts despite backup failure");
+    let (err, stats) = call(&client, "today_stats", json!({})).await;
+    assert!(!err, "{stats}");
     client.cancel().await.unwrap();
 }

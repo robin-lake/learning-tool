@@ -149,6 +149,7 @@ pub async fn save_version(
     change_summary: String,
     examples: Vec<NewExample>,
     processed_rating_ids: Vec<i64>,
+    removed_example_question_ids: Vec<i64>,
     now: DateTime<Utc>,
 ) -> Result<GuideVersion> {
     if content.trim().is_empty() {
@@ -161,7 +162,17 @@ pub async fn save_version(
             .map_err(|_| Error::Invalid(format!("example question {} does not exist", e.question_id)))?;
         levels.push(q.level);
     }
-    let (parent, _) = current(pool).await?;
+    // The previous version's examples carry forward unless removed or replaced by a new verdict.
+    let (parent, previous) = current(pool).await?;
+    let mut all: Vec<(NewExample, u8)> = previous
+        .into_iter()
+        .filter(|p| {
+            !removed_example_question_ids.contains(&p.question_id)
+                && !examples.iter().any(|e| e.question_id == p.question_id)
+        })
+        .map(|p| (NewExample { question_id: p.question_id, verdict: p.verdict, reason: p.reason }, p.level))
+        .collect();
+    all.extend(examples.into_iter().zip(levels));
     let stamp = ts(now);
     let mut tx = crate::db::begin_write(pool).await?;
     let id: i64 = sqlx::query_scalar(
@@ -174,7 +185,7 @@ pub async fn save_version(
     .bind(&stamp)
     .fetch_one(&mut *tx)
     .await?;
-    for (e, level) in examples.iter().zip(levels) {
+    for (e, level) in &all {
         sqlx::query(
             "INSERT INTO guide_examples (guide_version_id, question_id, verdict, level, reason, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
@@ -182,7 +193,7 @@ pub async fn save_version(
         .bind(id)
         .bind(e.question_id)
         .bind(e.verdict.as_str())
-        .bind(level as i64)
+        .bind(*level as i64)
         .bind(&e.reason)
         .bind(&stamp)
         .execute(&mut *tx)
@@ -232,7 +243,7 @@ mod tests {
         let q = testutil::question(&p, t).await;
         let a = rate(&p, q, 1, Some("bad".into()), None, None, now()).await.unwrap();
         rate(&p, q, 5, Some("great".into()), None, None, now()).await.unwrap();
-        save_version(&p, "v2".into(), "x".into(), vec![], vec![a], now()).await.unwrap();
+        save_version(&p, "v2".into(), "x".into(), vec![], vec![a], vec![], now()).await.unwrap();
         let open = list_ratings(&p, true).await.unwrap();
         assert_eq!(open.len(), 1);
         assert_eq!(open[0].rating.usefulness, 5);
@@ -248,13 +259,13 @@ mod tests {
         let r = rate(&p, q, 1, None, None, None, now()).await.unwrap();
         let (v1, _) = current(&p).await.unwrap();
         let ex = NewExample { question_id: q, verdict: Verdict::Bad, reason: "trivia".into() };
-        let v2 = save_version(&p, "guide v2".into(), "less trivia".into(), vec![ex], vec![r], now()).await.unwrap();
+        let v2 = save_version(&p, "guide v2".into(), "less trivia".into(), vec![ex], vec![r], vec![], now()).await.unwrap();
         assert_eq!(v2.parent_id, Some(v1.id));
         let processed: Option<i64> = sqlx::query_scalar("SELECT processed_in_guide_version_id FROM question_ratings WHERE id = ?")
             .bind(r).fetch_one(&p).await.unwrap();
         assert_eq!(processed, Some(v2.id));
         let bad = NewExample { question_id: 999, verdict: Verdict::Good, reason: String::new() };
-        assert!(matches!(save_version(&p, "v3".into(), String::new(), vec![bad], vec![], now()).await, Err(Error::Invalid(_))));
+        assert!(matches!(save_version(&p, "v3".into(), String::new(), vec![bad], vec![], vec![], now()).await, Err(Error::Invalid(_))));
         assert_eq!(current(&p).await.unwrap().0.id, v2.id);
     }
 
@@ -264,7 +275,7 @@ mod tests {
         let t = testutil::topic(&p, None, "T").await;
         let q = testutil::question(&p, t).await;
         let ex = NewExample { question_id: q, verdict: Verdict::Good, reason: "clear".into() };
-        save_version(&p, "v2".into(), String::new(), vec![ex], vec![], now()).await.unwrap();
+        save_version(&p, "v2".into(), String::new(), vec![ex], vec![], vec![], now()).await.unwrap();
         let (v, examples) = current(&p).await.unwrap();
         assert_eq!(v.content, "v2");
         assert_eq!(examples.len(), 1);
@@ -279,5 +290,20 @@ mod tests {
             assert!(v.content.contains(needle), "missing {needle}");
         }
         assert_eq!(v.parent_id, None);
+    }
+
+    #[tokio::test]
+    async fn examples_carry_forward_unless_removed_or_replaced() {
+        let p = test_pool().await;
+        let t = testutil::topic(&p, None, "T").await;
+        let a = testutil::question(&p, t).await;
+        let b = testutil::question(&p, t).await;
+        let ex = |q, verdict| NewExample { question_id: q, verdict, reason: String::new() };
+        save_version(&p, "v2".into(), String::new(), vec![ex(a, Verdict::Good)], vec![], vec![], now()).await.unwrap();
+        save_version(&p, "v3".into(), String::new(), vec![ex(b, Verdict::Bad)], vec![], vec![], now()).await.unwrap();
+        let ids = |e: &[GuideExample]| e.iter().map(|x| (x.question_id, x.verdict)).collect::<Vec<_>>();
+        assert_eq!(ids(&current(&p).await.unwrap().1), vec![(a, Verdict::Good), (b, Verdict::Bad)]);
+        save_version(&p, "v4".into(), String::new(), vec![ex(b, Verdict::Good)], vec![], vec![a], now()).await.unwrap();
+        assert_eq!(ids(&current(&p).await.unwrap().1), vec![(b, Verdict::Good)]);
     }
 }

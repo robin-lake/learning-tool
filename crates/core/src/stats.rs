@@ -168,7 +168,7 @@ mod tests {
         let sess = session::start(&p, &s, now).await.unwrap();
         let nq = session::next_question(&p, sess.session_id, now).await.unwrap().unwrap();
         let input = ReviewInput {
-            question_id: nq.question.id, rubric_result: all_hit(), hints_used: 0, fluent: false,
+            item_id: nq.item_id, question_id: nq.question.id, rubric_result: all_hit(), hints_used: 0, fluent: false,
             user_answer: "a".into(), asked_prompt: "q".into(), feedback: String::new(), duration_ms: None,
         };
         session::record_review(&p, &s, sess.session_id, input, now).await.unwrap();

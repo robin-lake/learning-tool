@@ -22,7 +22,9 @@ echo "==> Registering the MCP server with Claude Code (user scope)"
 if claude mcp get learning-tool >/dev/null 2>&1; then
     echo "    already registered"
 else
-    claude mcp add --scope user learning-tool -- learning-tool mcp
+    # Register by absolute path: GUI-launched Claude Code may not have ~/.cargo/bin on PATH.
+    bin="$(command -v learning-tool || echo "${CARGO_HOME:-$HOME/.cargo}/bin/learning-tool")"
+    claude mcp add --scope user learning-tool -- "$bin" mcp
 fi
 
 echo "==> Linking skills into ~/.claude/skills"
@@ -34,7 +36,7 @@ for skill in "$repo"/skills/*/; do
 done
 
 echo "==> Initializing the database"
-learning-tool migrate
+"$(command -v learning-tool || echo "${CARGO_HOME:-$HOME/.cargo}/bin/learning-tool")" migrate
 
 cat <<'MSG'
 

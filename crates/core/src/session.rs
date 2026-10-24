@@ -33,16 +33,24 @@ pub struct NextQuestion {
     pub position: u32,
     /// Questions left including this one.
     pub remaining: u32,
-    pub question: Question,
+    pub question_id: i64,
+    pub level: u8,
+    /// The question to ask (you may rephrase the surface, keeping the target).
+    pub prompt: String,
     pub topic_path: Vec<String>,
-    pub recent_reviews: Vec<ReviewRow>,
+    pub source_citation: Option<String>,
     pub lapses: u32,
     pub is_leech: bool,
-    pub source_citation: Option<String>,
+    pub recent_reviews: Vec<ReviewRow>,
+    /// For grading only — contains the answer and rubric. Listed last so it never shows in a
+    /// truncated preview; don't reveal it before the learner answers.
+    pub question: Question,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ReviewInput {
+    /// The item_id returned by next_question for this question.
+    pub item_id: i64,
     pub question_id: i64,
     /// One entry per rubric point.
     pub rubric_result: Vec<PointResult>,
@@ -225,12 +233,15 @@ pub async fn next_question(pool: &SqlitePool, session_id: i64, now: DateTime<Utc
             kind: ItemKind::parse(&kind)?,
             position: position as u32,
             remaining: unreviewed_counts(pool, session_id).await?.0,
-            source_citation: citation(pool, &question).await?,
-            question,
+            question_id: question.id,
+            level: question.level,
+            prompt: question.prompt.clone(),
             topic_path: detail.topic_path,
-            recent_reviews,
+            source_citation: citation(pool, &question).await?,
             lapses,
             is_leech: lapses >= settings.leech_lapses,
+            recent_reviews,
+            question,
         }));
     }
 }
@@ -253,20 +264,25 @@ pub async fn record_review(
     let stamp = ts(now);
 
     let mut tx = crate::db::begin_write(pool).await?;
-    let item: Option<(i64, String)> = sqlx::query_as(
-        "SELECT id, kind FROM session_items WHERE session_id = ? AND question_id = ? AND review_id IS NULL
-         ORDER BY ordinal LIMIT 1",
-    )
-    .bind(session_id)
-    .bind(input.question_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some((item_id, kind)) = item else {
-        return Err(Error::Conflict(format!(
-            "question {} is already recorded or not in session {session_id}",
-            input.question_id
-        )));
+    let item: Option<(i64, String, Option<i64>)> =
+        sqlx::query_as("SELECT question_id, kind, review_id FROM session_items WHERE id = ? AND session_id = ?")
+            .bind(input.item_id)
+            .bind(session_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some((item_question, kind, existing)) = item else {
+        return Err(Error::NotFound { entity: "session item", id: input.item_id });
     };
+    if existing.is_some() {
+        return Err(Error::Conflict(format!("item {} was already recorded", input.item_id)));
+    }
+    if item_question != input.question_id {
+        return Err(Error::Invalid(format!(
+            "item {} is question {item_question}, not question {}",
+            input.item_id, input.question_id
+        )));
+    }
+    let item_id = input.item_id;
     let review_id: i64 = sqlx::query_scalar(
         "INSERT INTO reviews (question_id, session_id, reviewed_at, grade, score, rubric_result, hints_used, fluent,
              user_answer, asked_prompt, feedback, duration_ms, created_at, updated_at)
@@ -316,6 +332,24 @@ pub async fn record_review(
         is_leech: state.lapses >= s.leech_lapses,
         requeued,
     })
+}
+
+/// Drops an unanswered item from this session without recording a review. The question stays
+/// scheduled and comes back in a later session.
+pub async fn skip(pool: &SqlitePool, session_id: i64, item_id: i64) -> Result<()> {
+    let item: Option<Option<i64>> = sqlx::query_scalar("SELECT review_id FROM session_items WHERE id = ? AND session_id = ?")
+        .bind(item_id)
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await?;
+    match item {
+        None => Err(Error::NotFound { entity: "session item", id: item_id }),
+        Some(Some(_)) => Err(Error::Conflict(format!("item {item_id} was already answered"))),
+        Some(None) => {
+            sqlx::query("DELETE FROM session_items WHERE id = ?").bind(item_id).execute(pool).await?;
+            Ok(())
+        }
+    }
 }
 
 /// Active main-program questions due on or before `day`.
@@ -370,8 +404,18 @@ mod tests {
         let s = Settings::load(&p).await.unwrap();
         (p, s)
     }
+    async fn input_for(p: &SqlitePool, sid: i64, q: i64, results: Vec<PointResult>) -> ReviewInput {
+        let item_id: i64 = sqlx::query_scalar(
+            "SELECT id FROM session_items WHERE session_id = ? AND question_id = ? AND review_id IS NULL ORDER BY ordinal LIMIT 1",
+        )
+        .bind(sid).bind(q).fetch_optional(p).await.unwrap().unwrap_or(0);
+        let mut i = input(q, results);
+        i.item_id = item_id;
+        i
+    }
     fn input(q: i64, results: Vec<PointResult>) -> ReviewInput {
         ReviewInput {
+            item_id: 0,
             question_id: q,
             rubric_result: results,
             hints_used: 0,
@@ -410,7 +454,7 @@ mod tests {
         while let Some(nq) = next_question(&p, st.session_id, utc(NOW)).await.unwrap() {
             assert_eq!(nq.remaining, 3 - seen.len() as u32);
             assert_eq!(nq.topic_path.len(), 1);
-            let out = record_review(&p, &s, st.session_id, input(nq.question.id, all_hit()), utc(NOW)).await.unwrap();
+            let out = record_review(&p, &s, st.session_id, input_for(&p, st.session_id, nq.question.id, all_hit()).await, utc(NOW)).await.unwrap();
             assert_eq!(out.grade, Grade::Good);
             assert!(out.due_on > day("2026-10-23"));
             seen.push(nq.question.id);
@@ -430,11 +474,11 @@ mod tests {
         let q = testutil::question(&p, t).await;
         let st = start(&p, &s, utc(NOW)).await.unwrap();
         let nq = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
-        let out = record_review(&p, &s, st.session_id, input(q, none_hit()), utc(NOW)).await.unwrap();
+        let out = record_review(&p, &s, st.session_id, input_for(&p, st.session_id, q, none_hit()).await, utc(NOW)).await.unwrap();
         assert_eq!((out.grade, out.requeued), (Grade::Again, true));
         let re = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
         assert_eq!((re.question.id, re.kind), (nq.question.id, ItemKind::Requeue));
-        let out = record_review(&p, &s, st.session_id, input(q, none_hit()), utc(NOW)).await.unwrap();
+        let out = record_review(&p, &s, st.session_id, input_for(&p, st.session_id, q, none_hit()).await, utc(NOW)).await.unwrap();
         assert!(!out.requeued);
         assert!(next_question(&p, st.session_id, utc(NOW)).await.unwrap().is_none());
     }
@@ -445,8 +489,9 @@ mod tests {
         let t = testutil::topic(&p, None, "A").await;
         let q = testutil::question(&p, t).await;
         let st = start(&p, &s, utc(NOW)).await.unwrap();
-        record_review(&p, &s, st.session_id, input(q, all_hit()), utc(NOW)).await.unwrap();
-        let err = record_review(&p, &s, st.session_id, input(q, all_hit()), utc(NOW)).await;
+        let first = input_for(&p, st.session_id, q, all_hit()).await;
+        record_review(&p, &s, st.session_id, first.clone(), utc(NOW)).await.unwrap();
+        let err = record_review(&p, &s, st.session_id, first, utc(NOW)).await;
         assert!(matches!(err, Err(Error::Conflict(_))));
         let n: i64 = sqlx::query_scalar("SELECT count(*) FROM reviews").fetch_one(&p).await.unwrap();
         assert_eq!(n, 1);
@@ -472,7 +517,7 @@ mod tests {
         let q = testutil::question(&p, t).await;
         testutil::question(&p, t).await;
         let a = start(&p, &s, utc(NOW)).await.unwrap();
-        record_review(&p, &s, a.session_id, input(q, all_hit()), utc(NOW)).await.unwrap();
+        record_review(&p, &s, a.session_id, input_for(&p, a.session_id, q, all_hit()).await, utc(NOW)).await.unwrap();
         let b = start(&p, &s, utc("2026-10-23T19:00:00Z")).await.unwrap();
         assert_eq!((b.session_id, b.planned), (a.session_id, 1));
         end(&p, &s, a.session_id, utc(NOW)).await.unwrap();
@@ -488,7 +533,7 @@ mod tests {
         // 10:50Z = 03:50 PDT on the 23rd → study day 2026-10-22
         let st = start(&p, &s, utc("2026-10-23T10:50:00Z")).await.unwrap();
         assert_eq!(st.study_day, day("2026-10-22"));
-        record_review(&p, &s, st.session_id, input(q, all_hit()), utc("2026-10-23T11:10:00Z")).await.unwrap();
+        record_review(&p, &s, st.session_id, input_for(&p, st.session_id, q, all_hit()).await, utc("2026-10-23T11:10:00Z")).await.unwrap();
         let state = crate::scheduler::load_state(&p, q).await.unwrap();
         assert_eq!(state.last_study_day, Some(day("2026-10-22")));
     }
@@ -501,11 +546,11 @@ mod tests {
         testutil::due_state(&p, q, "2026-10-23", 3.0).await;
         sqlx::query("UPDATE question_state SET lapses = 5 WHERE question_id = ?").bind(q).execute(&p).await.unwrap();
         let st = start(&p, &s, utc(NOW)).await.unwrap();
-        let out = record_review(&p, &s, st.session_id, input(q, none_hit()), utc(NOW)).await.unwrap();
+        let out = record_review(&p, &s, st.session_id, input_for(&p, st.session_id, q, none_hit()).await, utc(NOW)).await.unwrap();
         assert_eq!((out.lapses, out.is_leech), (6, true));
         let re = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
         assert!(re.is_leech);
-        record_review(&p, &s, st.session_id, input(q, all_hit()), utc(NOW)).await.unwrap();
+        record_review(&p, &s, st.session_id, input_for(&p, st.session_id, q, all_hit()).await, utc(NOW)).await.unwrap();
         assert_eq!(end(&p, &s, st.session_id, utc(NOW)).await.unwrap().leeches, vec![q]);
     }
 
@@ -515,7 +560,7 @@ mod tests {
         let t = testutil::topic(&p, None, "A").await;
         let q = testutil::question(&p, t).await;
         let st = start(&p, &s, utc(NOW)).await.unwrap();
-        let mut i = input(q, all_hit());
+        let mut i = input_for(&p, st.session_id, q, all_hit()).await;
         i.user_answer = "Line 1 🎺\n\"quoted\" — Schrödinger's 'horn'\n\tend".into();
         record_review(&p, &s, st.session_id, i.clone(), utc(NOW)).await.unwrap();
         let d = crate::questions::get(&p, q).await.unwrap();
@@ -529,7 +574,7 @@ mod tests {
         let q = testutil::question(&p, t).await;
         let st = start(&p, &s, utc(NOW)).await.unwrap();
         let bad = vec![PointResult { id: "nope".into(), hit: true, note: String::new() }];
-        let err = record_review(&p, &s, st.session_id, input(q, bad), utc(NOW)).await.unwrap_err();
+        let err = record_review(&p, &s, st.session_id, input_for(&p, st.session_id, q, bad).await, utc(NOW)).await.unwrap_err();
         assert!(matches!(&err, Error::Invalid(m) if m.contains("nope")));
         let n: i64 = sqlx::query_scalar("SELECT count(*) FROM reviews").fetch_one(&p).await.unwrap();
         assert_eq!(n, 0);
@@ -547,5 +592,72 @@ mod tests {
         crate::questions::set_status(&p, first, crate::questions::QuestionStatus::Retired, utc(NOW)).await.unwrap();
         let other = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap().question.id;
         assert_eq!(other, if first == q { q2 } else { q });
+    }
+
+    #[tokio::test]
+    async fn retry_after_again_is_rejected_and_keeps_requeue() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "A").await;
+        let q = testutil::question(&p, t).await;
+        let st = start(&p, &s, utc(NOW)).await.unwrap();
+        let nq = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
+        let mut i = input(q, none_hit());
+        i.item_id = nq.item_id;
+        assert!(record_review(&p, &s, st.session_id, i.clone(), utc(NOW)).await.unwrap().requeued);
+        assert!(matches!(record_review(&p, &s, st.session_id, i, utc(NOW)).await, Err(Error::Conflict(_))));
+        let n: i64 = sqlx::query_scalar("SELECT count(*) FROM reviews").fetch_one(&p).await.unwrap();
+        assert_eq!(n, 1);
+        let re = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
+        assert_eq!(re.kind, ItemKind::Requeue);
+    }
+
+    #[tokio::test]
+    async fn item_must_match_question() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "A").await;
+        let a = testutil::question(&p, t).await;
+        let b = testutil::question(&p, t).await;
+        let st = start(&p, &s, utc(NOW)).await.unwrap();
+        let mut i = input_for(&p, st.session_id, a, all_hit()).await;
+        i.question_id = b;
+        assert!(matches!(record_review(&p, &s, st.session_id, i, utc(NOW)).await, Err(Error::Invalid(_))));
+    }
+
+    #[tokio::test]
+    async fn skip_drops_item_for_this_session() {
+        let (p, s) = setup().await;
+        let t1 = testutil::topic(&p, None, "A").await;
+        let t2 = testutil::topic(&p, None, "B").await;
+        testutil::question(&p, t1).await;
+        testutil::question(&p, t2).await;
+        let st = start(&p, &s, utc(NOW)).await.unwrap();
+        let first = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
+        skip(&p, st.session_id, first.item_id).await.unwrap();
+        let second = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
+        assert_ne!(second.question.id, first.question.id);
+        assert_eq!(second.remaining, 1);
+        let n: i64 = sqlx::query_scalar("SELECT count(*) FROM reviews").fetch_one(&p).await.unwrap();
+        assert_eq!(n, 0);
+        assert!(matches!(skip(&p, st.session_id, first.item_id).await, Err(Error::NotFound { .. })));
+        let mut i = input(second.question.id, all_hit());
+        i.item_id = second.item_id;
+        record_review(&p, &s, st.session_id, i, utc(NOW)).await.unwrap();
+        assert!(matches!(skip(&p, st.session_id, second.item_id).await, Err(Error::Conflict(_))));
+    }
+
+    #[tokio::test]
+    async fn answer_and_rubric_come_after_the_prompt() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "A").await;
+        let q = testutil::question(&p, t).await;
+        sqlx::query("UPDATE questions SET prompt = 'What does a horn do?', answer = 'SECRET-ANSWER' WHERE id = ?")
+            .bind(q).execute(&p).await.unwrap();
+        let st = start(&p, &s, utc(NOW)).await.unwrap();
+        let nq = next_question(&p, st.session_id, utc(NOW)).await.unwrap().unwrap();
+        assert_eq!((nq.question_id, nq.prompt.as_str(), nq.level), (q, "What does a horn do?", 0));
+        let json = serde_json::to_string_pretty(&nq).unwrap();
+        let head: String = json.lines().take(12).collect::<Vec<_>>().join("\n");
+        assert!(head.contains("What does a horn do?"), "{head}");
+        assert!(!head.contains("SECRET-ANSWER") && !head.contains("rubric"), "{head}");
     }
 }

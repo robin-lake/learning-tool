@@ -13,6 +13,13 @@ pub struct SessionId {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct SkipQuestion {
+    pub session_id: i64,
+    /// The item_id from next_question.
+    pub item_id: i64,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct RecordReview {
     pub session_id: i64,
     /// Your grading of the learner's answer.
@@ -155,4 +162,7 @@ pub struct SaveGuideVersion {
     /// Ratings this version accounts for.
     #[serde(default)]
     pub processed_rating_ids: Vec<i64>,
+    /// Questions whose examples should no longer be carried forward (current examples are kept by default).
+    #[serde(default)]
+    pub removed_example_question_ids: Vec<i64>,
 }

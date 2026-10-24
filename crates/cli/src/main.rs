@@ -92,8 +92,11 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Mcp => {
             let s = Settings::load(&pool).await?;
-            if let Some(path) = backup::daily_if_needed(&pool, &dirs, &s, Utc::now()).await? {
-                tracing::info!("daily backup written to {}", path.display());
+            // A failed daily backup (e.g. an unmounted backup_dir) must not stop studying.
+            match backup::daily_if_needed(&pool, &dirs, &s, Utc::now()).await {
+                Ok(Some(path)) => tracing::info!("daily backup written to {}", path.display()),
+                Ok(None) => {}
+                Err(e) => tracing::warn!("daily backup failed: {e}"),
             }
             mcp::serve(pool, dirs).await?;
         }

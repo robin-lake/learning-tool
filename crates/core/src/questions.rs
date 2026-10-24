@@ -352,7 +352,9 @@ pub async fn update(pool: &SqlitePool, id: i64, patch: QuestionPatch, now: DateT
             .await?;
         let mut state = scheduler::load_state_conn(&mut tx, id).await?;
         if state.reps > 0 {
+            // Keep the schedule but give the new wording a fresh lapse count (leech detection).
             state.question_id = new_id;
+            state.lapses = 0;
             scheduler::save_state(&mut tx, &state).await?;
         }
         sqlx::query("INSERT INTO question_topics (question_id, topic_id) SELECT ?, topic_id FROM question_topics WHERE question_id = ?")
@@ -587,6 +589,23 @@ mod tests {
         let before = scheduler::load_state(&p, new.id).await.unwrap();
         scheduler::rebuild_all(&p, &s).await.unwrap();
         assert_eq!(scheduler::load_state(&p, new.id).await.unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn revision_resets_lapses_now_and_after_rebuild() {
+        let (p, s, t) = setup().await;
+        let id = add(&p, t, vec![nq("old")], QuestionStatus::Active, &s, now()).await.unwrap().ids[0];
+        for d in 1..=6 {
+            let sid = testutil::session(&p, &format!("2026-10-{d:02}")).await;
+            testutil::review_row(&p, id, sid, &format!("2026-10-{d:02}T18:00:00Z"), 1).await;
+        }
+        scheduler::rebuild_all(&p, &s).await.unwrap();
+        assert_eq!(scheduler::load_state(&p, id).await.unwrap().lapses, 6);
+        let new = update(&p, id, QuestionPatch { prompt: Some("simpler".into()), ..Default::default() }, now()).await.unwrap();
+        let carried = scheduler::load_state(&p, new.id).await.unwrap();
+        assert_eq!((carried.lapses, carried.reps), (0, 6));
+        scheduler::rebuild_all(&p, &s).await.unwrap();
+        assert_eq!(scheduler::load_state(&p, new.id).await.unwrap(), carried);
     }
 
     #[tokio::test]

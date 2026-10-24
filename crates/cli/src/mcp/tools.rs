@@ -30,12 +30,19 @@ impl LearningServer {
     #[tool(description = "Get the next question in a session, or null when the session is done. The rubric and answer are for grading only — never show them to the user before they answer. Calling again before record_review returns the same question.")]
     async fn next_question(&self, Parameters(p): Parameters<SessionId>) -> ToolResult {
         respond(session::next_question(&self.pool, p.session_id, Utc::now()).await, |r| match r {
-            Some(q) => format!("Question {} of session ({} remaining, level L{}).", q.position, q.remaining, q.question.level),
+            Some(q) => format!("Question {} of session ({} remaining, level L{}).", q.position, q.remaining, q.level),
             None => "Session complete: no questions left. Call end_session.".into(),
         })
     }
 
-    #[tool(description = "Record your grading of the learner's answer: one rubric_result entry per rubric point (hit or not), hints_used, and fluent (immediate, complete recall). The grade and next due date are computed for you.")]
+    #[tool(description = "Skip a question the learner doesn't want to answer now: drops it from this session without recording a review. It stays scheduled and comes back in a later session.")]
+    async fn skip_question(&self, Parameters(p): Parameters<SkipQuestion>) -> ToolResult {
+        respond(session::skip(&self.pool, p.session_id, p.item_id).await, |_| {
+            format!("Skipped item {}; it will come back in a later session.", p.item_id)
+        })
+    }
+
+    #[tool(description = "Record your grading of the learner's answer. Pass the item_id and question_id from next_question, one rubric_result entry per rubric point (hit or not), hints_used, and fluent (immediate, complete recall). The grade and next due date are computed for you. Recording the same item twice is rejected.")]
     async fn record_review(&self, Parameters(p): Parameters<RecordReview>) -> ToolResult {
         let s = self.settings().await?;
         respond(session::record_review(&self.pool, &s, p.session_id, p.review, Utc::now()).await, |r| {
@@ -206,7 +213,16 @@ impl LearningServer {
 
     #[tool(description = "Save a new question-writing guide version (after the learner approves it), with examples and the ratings it accounts for.")]
     async fn save_guide_version(&self, Parameters(p): Parameters<SaveGuideVersion>) -> ToolResult {
-        let r = guide::save_version(&self.pool, p.content, p.change_summary, p.examples, p.processed_rating_ids, Utc::now()).await;
+        let r = guide::save_version(
+            &self.pool,
+            p.content,
+            p.change_summary,
+            p.examples,
+            p.processed_rating_ids,
+            p.removed_example_question_ids,
+            Utc::now(),
+        )
+        .await;
         respond(r, |v| format!("Saved guide version {}.", v.id))
     }
 }

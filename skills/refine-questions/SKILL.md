@@ -30,5 +30,7 @@ idea as distilling review-comment history into a review checklist.
    - retire (`set_question_status` → `retired`) — for `knowledge_value`, or when it can't be saved,
    - leave as is.
 5. **Only after Robin approves:** call `mcp__learning-tool__save_guide_version` with the full new
-   `content`, a `change_summary`, the `examples`, and all `processed_rating_ids` you accounted for.
+   `content`, a `change_summary`, the new `examples`, and all `processed_rating_ids` you accounted for.
+   The current examples carry forward automatically; a new verdict on the same question replaces the
+   old one, and `removed_example_question_ids` drops examples that no longer help.
    Then apply the approved question actions. Report what changed in two or three lines.

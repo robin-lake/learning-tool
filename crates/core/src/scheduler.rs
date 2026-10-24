@@ -97,9 +97,10 @@ pub fn next(
     if let Some(cap) = p.max_interval_days {
         interval = interval.min(cap.max(1) as i64);
     }
-    let (state, lapses) = match (grade, prev.state) {
-        (Grade::Again, CardState::Review) => (CardState::Relearning, prev.lapses + 1),
-        (Grade::Again, _) => (CardState::Relearning, prev.lapses),
+    // A failed review is a lapse, except a re-ask later on the same study day.
+    let (state, lapses) = match grade {
+        Grade::Again if prev.last_study_day == Some(study_day) => (CardState::Relearning, prev.lapses),
+        Grade::Again => (CardState::Relearning, prev.lapses + 1),
         _ => (CardState::Review, prev.lapses),
     };
     Ok(QState {
@@ -196,9 +197,18 @@ pub async fn rebuild_all(pool: &SqlitePool, settings: &Settings) -> Result<u32> 
         }
         let mut state = QState::new(qid);
         let mut any = false;
-        for (_, at, grade, day) in reviews.iter().filter(|r| lineage.contains(&r.0)) {
+        let mut own = false;
+        for (rq, at, grade, day) in reviews.iter().filter(|r| lineage.contains(&r.0)) {
+            // Lapses belong to a wording: a revision starts its count fresh.
+            if *rq == qid && !own {
+                own = true;
+                state.lapses = 0;
+            }
             state = next(&state, Grade::from_i64(*grade)?, parse_day(day)?, parse_ts(at)?, &params)?;
             any = true;
+        }
+        if !own {
+            state.lapses = if lineage.len() > 1 { 0 } else { state.lapses };
         }
         if any {
             save_state(&mut tx, &state).await?;
@@ -253,9 +263,24 @@ mod tests {
     }
 
     #[test]
-    fn again_on_new_is_not_lapse() {
-        let s = next(&fresh(1), Grade::Again, day("2026-10-01"), utc("2026-10-01T18:00:00Z"), &main_params()).unwrap();
-        assert_eq!((s.lapses, s.state), (0, CardState::Relearning));
+    fn same_day_again_is_not_another_lapse() {
+        let p = main_params();
+        let d = day("2026-10-01");
+        let s = next(&fresh(1), Grade::Again, d, utc("2026-10-01T18:00:00Z"), &p).unwrap();
+        assert_eq!((s.lapses, s.state), (1, CardState::Relearning));
+        let s = next(&s, Grade::Again, d, utc("2026-10-01T18:10:00Z"), &p).unwrap();
+        assert_eq!(s.lapses, 1);
+    }
+
+    #[test]
+    fn failing_every_day_from_new_becomes_a_leech() {
+        let p = main_params();
+        let mut s = fresh(1);
+        for d in 1..=6 {
+            let day_ = day(&format!("2026-10-{d:02}"));
+            s = next(&s, Grade::Again, day_, utc(&format!("2026-10-{d:02}T18:00:00Z")), &p).unwrap();
+        }
+        assert_eq!(s.lapses, 6);
     }
 
     #[test]
