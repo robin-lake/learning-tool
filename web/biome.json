@@ -5,6 +5,7 @@
       "**",
       "!**/._*",
       "!dist",
+      "!pnpm-lock.yaml",
       "!src/api/generated",
       "!src/routeTree.gen.ts",
       "!src/components/ui"
