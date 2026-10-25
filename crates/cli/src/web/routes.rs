@@ -14,6 +14,7 @@ use learning_core::stats::{self, DayActivity, HomeSummary};
 use learning_core::topics::{self, NewTopic, Topic, TopicPatch, TopicStatus};
 use learning_core::views::{self, QuestionPage, TopicPage};
 use learning_core::guide;
+use learning_core::timeline::{self, Timeline};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -72,6 +73,7 @@ pub fn api() -> Router<AppState> {
     Router::new()
         .route("/home", get(home))
         .route("/activity", get(activity))
+        .route("/map/timeline", get(map_timeline))
         .route("/topics", get(root_topics).post(create_topic))
         .route("/topics/{id}", get(topic).patch(update_topic))
         .route("/questions/{id}", get(question).patch(update_question))
@@ -105,6 +107,11 @@ async fn activity(State(st): State<AppState>, Query(q): Query<HashMap<String, St
     let to = date(&q, "to")?.unwrap_or_else(|| s.study_day(Utc::now()));
     let from = date(&q, "from")?.unwrap_or(to - Duration::days(364));
     Ok(Json(stats::activity(&st.pool, from, to).await?))
+}
+
+async fn map_timeline(State(st): State<AppState>) -> ApiResult<Timeline> {
+    let s = settings(&st).await?;
+    Ok(Json(timeline::timeline(&st.pool, &s, Utc::now()).await?))
 }
 
 async fn root_topics(State(st): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult<TopicPage> {

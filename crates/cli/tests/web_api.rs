@@ -232,3 +232,31 @@ async fn bind_error_mentions_port_flag() {
         .to_string();
     assert!(err.contains(&format!("port {port} is in use")) && err.contains("--port"), "{err}");
 }
+
+#[tokio::test]
+async fn map_timeline_shape() {
+    let e = env().await;
+    let (topic_id, ids) = seed(&e).await;
+    let sid: i64 = sqlx::query_scalar(
+        "INSERT INTO sessions (kind, study_day, started_at, created_at, updated_at) VALUES ('main', date('now', '-2 days'), datetime('now'), datetime('now'), datetime('now')) RETURNING id",
+    )
+    .fetch_one(&e.state.pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO reviews (question_id, session_id, reviewed_at, grade, score, rubric_result, user_answer, asked_prompt, created_at, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 3, 1.0, '[]', 'a', 'q', 'x', 'x')")
+        .bind(ids[0])
+        .bind(sid)
+        .execute(&e.state.pool)
+        .await
+        .unwrap();
+    let (status, body, _) = call(&e, "GET", "/api/map/timeline", None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let days = body["days"].as_array().unwrap().len();
+    assert!(days >= 1);
+    let nodes = body["nodes"].as_array().unwrap();
+    let topic = nodes.iter().find(|n| n["id"] == format!("t{topic_id}")).unwrap();
+    assert_eq!(topic["series"]["questions"].as_array().unwrap().len(), days);
+    let q = nodes.iter().find(|n| n["id"] == format!("q{}", ids[0])).unwrap();
+    assert_eq!(q["parent"], format!("t{topic_id}"));
+    assert_eq!(body["stale_after_days"], 14);
+}
