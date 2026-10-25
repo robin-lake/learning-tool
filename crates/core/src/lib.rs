@@ -16,6 +16,7 @@ pub mod session;
 pub mod settings;
 pub mod stats;
 pub mod status_log;
+pub mod timeline;
 pub mod topics;
 pub mod types;
 pub mod views;

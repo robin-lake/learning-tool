@@ -81,12 +81,24 @@ pub fn next(
     reviewed_at: DateTime<Utc>,
     p: &SchedParams,
 ) -> Result<QState> {
+    next_with(&FSRS::default(), prev, grade, study_day, reviewed_at, p)
+}
+
+/// `next` with a caller-provided model, for replaying many reviews (building the model isn't free).
+pub fn next_with(
+    fsrs: &FSRS,
+    prev: &QState,
+    grade: Grade,
+    study_day: NaiveDate,
+    reviewed_at: DateTime<Utc>,
+    p: &SchedParams,
+) -> Result<QState> {
     let days_elapsed = prev
         .last_study_day
         .map(|last| (study_day - last).num_days().max(0) as u32)
         .unwrap_or(0);
     let mem = prev.mem.map(|m| MemoryState { stability: m.stability, difficulty: m.difficulty });
-    let states = FSRS::default()
+    let states = fsrs
         .next_states(mem, p.desired_retention, days_elapsed)
         .map_err(|e| Error::Fsrs(e.to_string()))?;
     let item = match grade {

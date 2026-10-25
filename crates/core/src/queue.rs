@@ -8,8 +8,10 @@ use crate::scheduler::retrievability;
 use crate::settings::Settings;
 use crate::types::{parse_ts, str_enum};
 
-/// `New` means "uses one of the day's new-question slots": a new question, or a pinned question that isn't due.
-str_enum!(ItemKind { Review => "review", New => "new", Requeue => "requeue" });
+str_enum!(
+    /// `New` means "uses one of the day's new-question slots": a new question, or a pinned question that isn't due.
+    ItemKind { Review => "review", New => "new", Requeue => "requeue" }
+);
 
 /// Retrievability at or above which a review can open the session as an easy warm-up.
 const WARMUP_MIN_R: f32 = 0.85;
