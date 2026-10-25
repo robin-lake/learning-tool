@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { timeline } from "@/lib/map/fixtures";
 import { routeTree } from "@/routeTree.gen";
@@ -65,4 +65,25 @@ it("map_fits_its_container_after_loading", async () => {
   const svg = screen.getByTitle("Map of Topics").closest("svg");
   expect(svg).toHaveAttribute("width", "480");
   vi.restoreAllMocks();
+});
+
+it("escape_zooms_out", async () => {
+  const router = open("/map?topic=t1");
+  await screen.findByRole("button", { name: /^q1/ });
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(await screen.findByRole("button", { name: /^Electric circuits/ })).toBeInTheDocument();
+  expect(router.state.location.search).toEqual({});
+});
+
+it("playback_writes_the_url_only_when_it_stops", async () => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+  const router = open("/map");
+  fireEvent.click(await screen.findByRole("button", { name: "Play" }));
+  act(() => vi.advanceTimersByTime(2600));
+  const slider = screen.getByRole("slider", { name: "Day" }) as HTMLInputElement;
+  expect(slider.value).toBe("1");
+  expect(router.state.location.search).toEqual({});
+  fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+  await vi.waitFor(() => expect(router.state.location.search).toEqual({ day: "2026-10-02" }));
+  vi.useRealTimers();
 });

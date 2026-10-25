@@ -38,3 +38,13 @@ describe("buildTree", () => {
     expect(buildTree(timeline.nodes, "t99", null, "growing")).toBeNull();
   });
 });
+
+describe("fixed mode", () => {
+  it("fixed_drops_nodes_absent_today", () => {
+    const retired = timeline.nodes.map((n) =>
+      n.id === "q3" ? { ...n, now: { ...n.now, questions: 0 } } : n,
+    );
+    const root = buildTree(retired, "t2", null, "fixed");
+    expect(root?.children).toEqual([]);
+  });
+});

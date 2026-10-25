@@ -66,3 +66,9 @@ it("never_studied_uses_hatch_pattern", () => {
   const studied = screen.getByRole("button", { name: /^q1/ });
   expect(studied.getAttribute("fill")).toMatch(/^oklch\(/);
 });
+
+it("new_circles_grow_in_from_zero", () => {
+  draw(null);
+  // Animation doesn't run in jsdom: the first frame shows where each circle starts.
+  for (const c of screen.getAllByRole("button")) expect(c.getAttribute("r")).toBe("0");
+});

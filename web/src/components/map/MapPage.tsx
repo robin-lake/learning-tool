@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
-import { Fragment, useLayoutEffect, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TimelineNode } from "@/api/generated/TimelineNode";
 import { timelineQuery } from "@/api/queries";
 import { ErrorState } from "@/components/ErrorState";
@@ -63,6 +63,20 @@ export function MapPage({ search }: { search: MapSearch }) {
   const [box, size] = useSize();
   const setSearch = (patch: Partial<Record<keyof MapSearch, string | undefined>>, replace = true) =>
     navigate({ to: "/map", search: (prev: MapSearch) => validateMapSearch({ ...prev, ...patch }), replace });
+  // While playing, the day lives here; it reaches the URL once playback stops, because browsers
+  // throttle history writes and every write re-runs the route.
+  const [live, setLive] = useState<{ index: number | null } | null>(null);
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  const playingRef = useRef(false);
+  const zoomOutRef = useRef(() => {});
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !playingRef.current) zoomOutRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (q.isPending) return <Skeleton className="h-96" />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
@@ -70,7 +84,8 @@ export function MapPage({ search }: { search: MapSearch }) {
   const color = search.color ?? "combined";
   const mode = search.mode ?? "growing";
   const found = search.day ? tl.days.indexOf(search.day) : -1;
-  const index = found >= 0 && found < tl.days.length - 1 ? found : null;
+  const index = live ? live.index : found >= 0 && found < tl.days.length - 1 ? found : null;
+  const setDay = (i: number | null) => setSearch({ day: i === null ? undefined : tl.days[i] });
   const day = index === null ? tl.today : tl.days[index];
   const stale = { after: tl.stale_after_days, full: tl.stale_full_days };
 
@@ -78,6 +93,9 @@ export function MapPage({ search }: { search: MapSearch }) {
   const unknownTopic = search.topic !== undefined && zoomed === null;
   const root = zoomed ?? buildTree(tl.nodes, null, index, mode);
   const crumbs = zoomed ? path(tl.nodes, zoomed.id) : [];
+  zoomOutRef.current = () => {
+    if (zoomed) setSearch({ topic: crumbs.at(-2)?.id }, false);
+  };
 
   return (
     <div className="space-y-4">
@@ -130,10 +148,24 @@ export function MapPage({ search }: { search: MapSearch }) {
       <PlaybackBar
         days={tl.days}
         index={index}
-        onIndex={(i) => setSearch({ day: i === null ? undefined : tl.days[i] })}
+        onIndex={(i, isLive) => {
+          if (isLive) setLive({ index: i });
+          else {
+            setLive(null);
+            setDay(i);
+          }
+        }}
+        onPlayingChange={(playing) => {
+          playingRef.current = playing;
+          const shown = liveRef.current;
+          if (!playing && shown) {
+            setLive(null);
+            setDay(shown.index);
+          }
+        }}
       />
       <div ref={box} className="w-full">
-        {root && root.children.length > 0 ? (
+        {root?.children.some((c) => c.value > 0) ? (
           <MapView
             root={root}
             width={size.width}

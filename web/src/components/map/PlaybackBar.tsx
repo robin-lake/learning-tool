@@ -10,17 +10,28 @@ type Props = {
   days: string[];
   /** Index into `days`; `null` means today. */
   index: number | null;
-  onIndex(i: number | null): void;
+  /** `live` is true for the frames of a running playback, which callers needn't persist. */
+  onIndex(i: number | null, live?: boolean): void;
+  /** Called when playback starts and stops (paused, Esc, finished or interrupted). */
+  onPlayingChange?(playing: boolean): void;
 };
 
 /** Step, scrub or play through the history, one day at a time. */
-export function PlaybackBar({ days, index, onIndex }: Props) {
+export function PlaybackBar({ days, index, onIndex, onPlayingChange }: Props) {
   const n = days.length;
   const last = n - 1;
   const at = index ?? last;
   const [playing, setPlaying] = useState(false);
   const onIndexRef = useRef(onIndex);
   onIndexRef.current = onIndex;
+  const onPlayingRef = useRef(onPlayingChange);
+  onPlayingRef.current = onPlayingChange;
+  const started = useRef(false);
+  useEffect(() => {
+    if (playing === started.current) return;
+    started.current = playing;
+    onPlayingRef.current?.(playing);
+  }, [playing]);
   const startRef = useRef(0);
 
   const go = (i: number) => onIndex(i >= last ? null : Math.max(0, i));
@@ -37,7 +48,7 @@ export function PlaybackBar({ days, index, onIndex }: Props) {
       const i = Math.floor(progress * last);
       if (i !== shown) {
         shown = i;
-        onIndexRef.current(i >= last ? null : i);
+        onIndexRef.current(i >= last ? null : i, true);
       }
       if (progress >= 1) setPlaying(false);
       else frame = requestAnimationFrame(tick);
@@ -57,7 +68,7 @@ export function PlaybackBar({ days, index, onIndex }: Props) {
     // From today, replay the whole history; otherwise carry on from the day shown.
     const from = at >= last ? 0 : at;
     startRef.current = from;
-    onIndex(from);
+    onIndex(from, true);
     setPlaying(true);
   };
 

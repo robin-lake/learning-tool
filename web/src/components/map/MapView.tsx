@@ -12,6 +12,8 @@ const FONT_PX = 12;
 const CHAR_PX = 7;
 /** Circles at least this big also show their question count under the name. */
 const COUNT_MIN_R = 32;
+/** Circles that appear (on zoom, or as bubbles during playback) grow from their centre; existing
+ * ones move and resize between days. */
 const SPRING = { type: "spring", stiffness: 170, damping: 26 } as const;
 
 /** Whether `text` fits across a circle of radius `r`, leaving a margin. */
@@ -72,12 +74,9 @@ export function MapView({ root, width, height, color, stale, day, onZoom, onOpen
                 role="button"
                 tabIndex={0}
                 aria-label={summary(n)}
-                initial={false}
+                initial={{ cx: s.x, cy: s.y, r: 0 }}
                 animate={{ cx: s.x, cy: s.y, r: s.r }}
                 transition={SPRING}
-                cx={s.x}
-                cy={s.y}
-                r={s.r}
                 fill={c.hatched ? `url(#${hatchId})` : c.fill}
                 stroke="var(--background)"
                 strokeWidth={1.5}
@@ -98,12 +97,9 @@ export function MapView({ root, width, height, color, stale, day, onZoom, onOpen
           <motion.circle
             key={s.id}
             aria-hidden
-            initial={false}
+            initial={{ cx: s.x, cy: s.y, r: 0 }}
             animate={{ cx: s.x, cy: s.y, r: s.r }}
             transition={SPRING}
-            cx={s.x}
-            cy={s.y}
-            r={s.r}
             fill="none"
             stroke="white"
             strokeOpacity={0.45}
@@ -119,8 +115,8 @@ export function MapView({ root, width, height, color, stale, day, onZoom, onOpen
             <motion.g
               key={s.id}
               aria-hidden
-              initial={false}
-              animate={{ x: s.x, y: s.y }}
+              initial={{ x: s.x, y: s.y, opacity: 0 }}
+              animate={{ x: s.x, y: s.y, opacity: 1 }}
               transition={SPRING}
               className="pointer-events-none"
               fill={ink}

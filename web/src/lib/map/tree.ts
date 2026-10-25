@@ -63,7 +63,8 @@ export function buildTree(
   const dueAt = (n: TimelineNode) => (dayIndex === null ? n.now.due : (n.series.due[dayIndex] ?? 0));
   const build = (n: TimelineNode): TreeNode | null => {
     const value = mode === "fixed" ? n.now.questions : existsAt(n);
-    if (value === 0 && mode === "growing") return null;
+    // Growing: not yet created on that day. Fixed: not on today's map (retired, or nothing active).
+    if (value === 0) return null;
     return {
       id: n.id,
       kind: n.kind,

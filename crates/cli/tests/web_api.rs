@@ -260,3 +260,17 @@ async fn map_timeline_shape() {
     assert_eq!(q["parent"], format!("t{topic_id}"));
     assert_eq!(body["stale_after_days"], 14);
 }
+
+#[tokio::test]
+async fn responses_are_gzipped_when_asked() {
+    let e = env().await;
+    let req = axum::http::Request::builder()
+        .uri("/api/map/timeline")
+        .header("accept-encoding", "gzip")
+        .header("host", "localhost")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let res = tower::ServiceExt::oneshot(router(e.state.clone()), req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("content-encoding").map(|v| v.to_str().unwrap()), Some("gzip"));
+}

@@ -28,7 +28,7 @@ tempfile = "3"
 thiserror = "2"
 ts-rs = { version = "12", features = ["chrono-impl", "no-serde-warnings"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.7", features = ["trace", "limit"] }
+tower-http = { version = "0.7", features = ["trace", "limit", "compression-gzip"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "net", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -12,6 +12,7 @@ use axum::middleware::{self, Next};
 use axum::response::Response;
 use learning_core::db::DataDir;
 use sqlx::SqlitePool;
+use tower_http::compression::CompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
@@ -32,6 +33,7 @@ pub fn router(state: AppState) -> Router {
         .fallback(assets::static_handler)
         .layer(middleware::from_fn(auth_seam))
         .layer(RequestBodyLimitLayer::new(1024 * 1024))
+        .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

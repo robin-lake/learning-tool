@@ -27,7 +27,8 @@ function packChildren(node: TreeNode, width: number, height: number, padding: nu
  * topics with many subtopics take more than their share of space.
  */
 export const packLayout: Layout = (root, width, height) => {
-  if (root.children.length === 0 || width <= 0 || height <= 0) return [];
+  // d3 pack yields NaN when every value is zero.
+  if (root.children.every((c) => c.value <= 0) || width <= 0 || height <= 0) return [];
   const shapes: Shape[] = [];
   for (const top of packChildren(root, width, height, 6)) {
     shapes.push({ id: top.data.id, x: top.x, y: top.y, r: top.r, depth: 1 });

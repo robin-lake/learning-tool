@@ -179,7 +179,8 @@ fn aggregate<'a>(points: impl Iterator<Item = &'a Point>) -> Snapshot {
             };
         }
     }
-    let avg = |(sum, n): (f32, u32)| (n > 0).then(|| sum / n as f32);
+    // Three decimal places: the series are sent for every node and day, and JSON prints f32s at full length.
+    let avg = |(sum, n): (f32, u32)| (n > 0).then(|| (sum / n as f32 * 1000.0).round() / 1000.0);
     s.recall = avg(recall);
     s.durability = avg(durability);
     s.last_score = avg(score);
@@ -395,6 +396,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn measures_are_rounded_to_keep_the_payload_small() {
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "T").await;
+        let qa = testutil::question(&p, t).await;
+        let qb = testutil::question(&p, t).await;
+        review(&p, qa, "2026-10-01", 3, 1.0).await;
+        review(&p, qb, "2026-10-02", 2, 0.7).await;
+        let tl = timeline(&p, &s, utc("2026-10-09T18:00:00Z")).await.unwrap();
+        let three_places = |v: f32| ((v as f64) * 1000.0 - ((v as f64) * 1000.0).round()).abs() < 1e-3;
+        for n in &tl.nodes {
+            for v in n.series.recall.iter().chain(&n.series.durability).chain(&n.series.last_score).flatten() {
+                assert!(three_places(*v), "{} has {v}", n.id);
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn recall_sags_between_reviews_and_jumps_on_review_day() {
         let (p, s) = setup().await;
         let t = testutil::topic(&p, None, "T").await;
@@ -498,7 +516,7 @@ mod tests {
         assert_eq!(r.series.days_since[2], Some(0));
         assert_eq!(r.series.days_since[1], Some(1));
         let mean = (node(&tl, &format!("q{qa}")).series.recall[2].unwrap() + node(&tl, &format!("q{qb}")).series.recall[2].unwrap()) / 2.0;
-        assert!((r.series.recall[2].unwrap() - mean).abs() < 1e-6);
+        assert!((r.series.recall[2].unwrap() - mean).abs() < 1e-3, "means agree to the 3 places sent");
     }
 
     #[tokio::test]

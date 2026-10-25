@@ -58,3 +58,10 @@ it("top_level_areas_follow_question_counts", () => {
   expect(areaRatio).toBeGreaterThan(1.7 * 0.75);
   expect(areaRatio).toBeLessThan(1.7 * 1.25);
 });
+
+it("all_zero_children_give_no_shapes", () => {
+  const root = buildTree(timeline.nodes, null, null, "fixed");
+  if (!root) throw new Error("no tree");
+  const zeroed = { ...root, children: root.children.map((c) => ({ ...c, value: 0, children: [] })) };
+  expect(packLayout(zeroed, 400, 300)).toEqual([]);
+});
