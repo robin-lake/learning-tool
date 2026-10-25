@@ -8,6 +8,7 @@ import type { Question } from "./generated/Question";
 import type { QuestionPage } from "./generated/QuestionPage";
 import type { QuestionPatch } from "./generated/QuestionPatch";
 import type { QuestionStatus } from "./generated/QuestionStatus";
+import type { Timeline } from "./generated/Timeline";
 import type { Topic } from "./generated/Topic";
 import type { TopicPage } from "./generated/TopicPage";
 import type { UpdateTopicBody } from "./generated/UpdateTopicBody";
@@ -18,6 +19,7 @@ export const keys = {
   topic: (id: number | null, all: boolean, archived: boolean) =>
     ["topic", id ?? "root", all, archived] as const,
   question: (id: number) => ["question", id] as const,
+  timeline: ["timeline"] as const,
 };
 
 export const homeQuery = () =>
@@ -47,7 +49,10 @@ export const questionQuery = (id: number) =>
     queryFn: () => api<QuestionPage>("GET", `/api/questions/${id}`),
   });
 
-/** Edits can change counts anywhere (home tiles, topic cards, question rows), so refresh them all. */
+export const timelineQuery = () =>
+  queryOptions({ queryKey: keys.timeline, queryFn: () => api<Timeline>("GET", "/api/map/timeline") });
+
+/** Edits can change counts anywhere (home tiles, topic cards, question rows, the map), so refresh them all. */
 function useRefreshAll() {
   const qc = useQueryClient();
   return () =>
@@ -55,6 +60,7 @@ function useRefreshAll() {
       qc.invalidateQueries({ queryKey: keys.home }),
       qc.invalidateQueries({ queryKey: ["topic"] }),
       qc.invalidateQueries({ queryKey: ["question"] }),
+      qc.invalidateQueries({ queryKey: keys.timeline }),
     ]);
 }
 

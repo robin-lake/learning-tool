@@ -21,9 +21,9 @@ function RootLayout() {
             <Link to="/topics" className={navLink}>
               Topics
             </Link>
-            <span className="text-sm text-muted-foreground/50" title="Coming soon" aria-disabled="true">
+            <Link to="/map" className={navLink}>
               Map
-            </span>
+            </Link>
             <span className="text-sm text-muted-foreground/50" title="Coming soon" aria-disabled="true">
               Projects
             </span>

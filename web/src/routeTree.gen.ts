@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MapRouteImport } from './routes/map'
 import { Route as QuestionsQuestionIdRouteImport } from './routes/questions/$questionId'
 import { Route as TopicsIndexRouteImport } from './routes/topics/index'
 import { Route as TopicsTopicIdRouteImport } from './routes/topics/$topicId'
@@ -17,6 +18,11 @@ import { Route as TopicsTopicIdRouteImport } from './routes/topics/$topicId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MapRoute = MapRouteImport.update({
+  id: '/map',
+  path: '/map',
   getParentRoute: () => rootRouteImport,
 } as any)
 const QuestionsQuestionIdRoute = QuestionsQuestionIdRouteImport.update({
@@ -37,12 +43,14 @@ const TopicsTopicIdRoute = TopicsTopicIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/map': typeof MapRoute
   '/questions/$questionId': typeof QuestionsQuestionIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
   '/topics/': typeof TopicsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/map': typeof MapRoute
   '/questions/$questionId': typeof QuestionsQuestionIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
   '/topics': typeof TopicsIndexRoute
@@ -50,18 +58,21 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/map': typeof MapRoute
   '/questions/$questionId': typeof QuestionsQuestionIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
   '/topics/': typeof TopicsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/questions/$questionId' | '/topics/$topicId' | '/topics/'
+  fullPaths:
+    '/' | '/map' | '/questions/$questionId' | '/topics/$topicId' | '/topics/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/questions/$questionId' | '/topics/$topicId' | '/topics'
+  to: '/' | '/map' | '/questions/$questionId' | '/topics/$topicId' | '/topics'
   id:
     | '__root__'
     | '/'
+    | '/map'
     | '/questions/$questionId'
     | '/topics/$topicId'
     | '/topics/'
@@ -69,6 +80,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MapRoute: typeof MapRoute
   QuestionsQuestionIdRoute: typeof QuestionsQuestionIdRoute
   TopicsTopicIdRoute: typeof TopicsTopicIdRoute
   TopicsIndexRoute: typeof TopicsIndexRoute
@@ -81,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/map': {
+      id: '/map'
+      path: '/map'
+      fullPath: '/map'
+      preLoaderRoute: typeof MapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/questions/$questionId': {
@@ -109,6 +128,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MapRoute: MapRoute,
   QuestionsQuestionIdRoute: QuestionsQuestionIdRoute,
   TopicsTopicIdRoute: TopicsTopicIdRoute,
   TopicsIndexRoute: TopicsIndexRoute,
