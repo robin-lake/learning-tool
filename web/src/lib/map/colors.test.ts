@@ -12,13 +12,14 @@ const m = (over: Partial<Measures> = {}): Measures => ({
 });
 
 describe("colors", () => {
-  it("never_studied_is_hatched", () => {
+  it("never_studied_is_plain_grey", () => {
     const c = colorFor(
       m({ studied: 0, recall: null, durability: null, lastScore: null, daysSince: null }),
       "combined",
       stale,
     );
-    expect(c.hatched).toBe(true);
+    expect(c.fill).toBe("oklch(0.9 0 0)");
+    expect(c.text).toBe("dark");
   });
 
   it("combined_respects_bands", () => {

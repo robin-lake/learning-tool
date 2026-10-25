@@ -10,7 +10,7 @@ export type Measures = {
   daysSince: number | null;
 };
 
-export type Fill = { fill: string; text: "light" | "dark"; hatched: boolean };
+export type Fill = { fill: string; text: "light" | "dark" };
 
 /** The ranges the combined view maps its measures into (OKLCH). */
 export const BANDS = {
@@ -25,7 +25,8 @@ export const BANDS = {
 };
 
 const SINGLE = { l: 0.65, c: 0.13 };
-const NEVER = "oklch(0.9 0 0)";
+/** Never studied: a plain neutral grey, outside the colored bands. */
+export const NEVER = "oklch(0.9 0 0)";
 const LIGHT_TEXT_BELOW = 0.62;
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -46,7 +47,7 @@ function durabilityScale(days: number | null): number {
 const fmt = (l: number, c: number, h: number) => `oklch(${+l.toFixed(4)} ${+c.toFixed(4)} ${+h.toFixed(4)})`;
 
 export function colorFor(m: Measures, mode: ColorMode, stale: { after: number; full: number }): Fill {
-  if (m.studied === 0) return { fill: NEVER, text: "dark", hatched: true };
+  if (m.studied === 0) return { fill: NEVER, text: "dark" };
   const fresh = freshness(m.daysSince, stale.after, stale.full);
   let l = SINGLE.l;
   let c = SINGLE.c;
@@ -70,7 +71,7 @@ export function colorFor(m: Measures, mode: ColorMode, stale: { after: number; f
       t = fresh;
       break;
   }
-  return { fill: fmt(l, c, hueFor(t)), text: l < LIGHT_TEXT_BELOW ? "light" : "dark", hatched: false };
+  return { fill: fmt(l, c, hueFor(t)), text: l < LIGHT_TEXT_BELOW ? "light" : "dark" };
 }
 
 /** Reads back an `oklch(L C H)` string produced by `colorFor`. */

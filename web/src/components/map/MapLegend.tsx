@@ -1,4 +1,4 @@
-import { type ColorMode, colorFor, type Measures } from "@/lib/map/colors";
+import { type ColorMode, colorFor, type Measures, NEVER } from "@/lib/map/colors";
 
 type Stale = { after: number; full: number };
 
@@ -34,16 +34,12 @@ function scale(
   }
 }
 
-function Swatch({ fill, hatched }: { fill?: string; hatched?: boolean }) {
+function Swatch({ fill }: { fill: string }) {
   return (
     <span
       aria-hidden
       className="inline-block size-3 rounded-full border border-black/10 align-middle"
-      style={
-        hatched
-          ? { background: "repeating-linear-gradient(45deg,#e5e5e5,#e5e5e5 3px,#cfcfcf 3px,#cfcfcf 6px)" }
-          : { background: fill }
-      }
+      style={{ background: fill }}
     />
   );
 }
@@ -76,7 +72,7 @@ export function MapLegend({ mode, stale }: { mode: ColorMode; stale: Stale }) {
         </>
       )}
       <span className="flex items-center gap-1.5">
-        <Swatch hatched />
+        <Swatch fill={NEVER} />
         <span>Not studied</span>
       </span>
     </div>

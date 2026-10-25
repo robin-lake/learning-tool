@@ -8,10 +8,7 @@ describe("packLayout", () => {
     const a = buildTree(timeline.nodes, null, 1, "growing");
     const b = buildTree(timeline.nodes, null, 2, "growing");
     if (!a || !b) throw new Error("no tree");
-    const ids = (root: typeof a) =>
-      packLayout(root, 400, 300)
-        .filter((s) => s.depth === 1)
-        .map((s) => s.id);
+    const ids = (root: typeof a) => packLayout(root, 400, 300).map((s) => s.id);
     expect(ids(a)).toEqual(["t1", "t2"]);
     expect(ids(b)).toEqual(["t1", "t2"]);
   });
@@ -64,4 +61,10 @@ it("all_zero_children_give_no_shapes", () => {
   if (!root) throw new Error("no tree");
   const zeroed = { ...root, children: root.children.map((c) => ({ ...c, value: 0, children: [] })) };
   expect(packLayout(zeroed, 400, 300)).toEqual([]);
+});
+
+it("only_the_root_children_get_shapes", () => {
+  const root = buildTree(timeline.nodes, null, null, "fixed");
+  if (!root) throw new Error("no tree");
+  expect(packLayout(root, 400, 300).map((s) => s.id)).toEqual(["t1", "t2"]);
 });

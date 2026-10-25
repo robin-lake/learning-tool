@@ -14,9 +14,7 @@ export function RatingBox({ questionId, ratings }: { questionId: number; ratings
   const rate = useRateQuestion();
   return (
     <div className="space-y-2">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">
-        How useful is this question?
-      </div>
+      <h2 className="font-semibold">How useful is this question?</h2>
       <fieldset className="flex gap-1">
         <legend className="sr-only">Usefulness, 1 to 5</legend>
         {[1, 2, 3, 4, 5].map((n) => (

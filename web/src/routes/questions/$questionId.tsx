@@ -19,19 +19,21 @@ function QuestionRoute() {
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const page = q.data;
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <QuestionHeader page={page} />
-      <div className="grid gap-6 md:grid-cols-[1fr_18rem]">
+      <div className="grid items-start gap-10 md:grid-cols-[minmax(0,42rem)_18rem] md:justify-between">
         <AnswerRubric question={page.detail.question} citation={page.source_citation} />
-        <Card className="py-4">
-          <CardContent className="space-y-4 px-4">
+        <Card className="py-5">
+          <CardContent className="px-5">
             <ScheduleBox page={page} />
-            <RatingBox questionId={page.detail.question.id} ratings={page.detail.ratings} />
+            <div className="mt-6 border-t pt-6">
+              <RatingBox questionId={page.detail.question.id} ratings={page.detail.ratings} />
+            </div>
           </CardContent>
         </Card>
       </div>
-      <section className="space-y-2">
-        <h2 className="font-medium">Attempt history</h2>
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold tracking-tight">Attempt history</h2>
         <AttemptHistory reviews={page.detail.reviews} currentId={page.detail.question.id} />
       </section>
     </div>

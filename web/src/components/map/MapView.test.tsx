@@ -59,12 +59,31 @@ it("shows_label_when_it_fits", () => {
   expect(screen.getByText("Electric circuits")).toBeInTheDocument();
 });
 
-it("never_studied_uses_hatch_pattern", () => {
+it("never_studied_is_plain_grey", () => {
   draw("t1");
   const unstudied = screen.getByRole("button", { name: "q2: 1 question, not studied" });
-  expect(unstudied.getAttribute("fill")).toMatch(/^url\(#/);
+  expect(unstudied.getAttribute("fill")).toBe("oklch(0.9 0 0)");
   const studied = screen.getByRole("button", { name: /^q1/ });
   expect(studied.getAttribute("fill")).toMatch(/^oklch\(/);
+});
+
+it("draws_only_the_root_children", () => {
+  const { container } = render(
+    <TooltipProvider delayDuration={0}>
+      <MapView
+        root={buildTree(timeline.nodes, null, null, "fixed") ?? (null as never)}
+        width={400}
+        height={400}
+        color="combined"
+        stale={stale}
+        day="2026-10-03"
+        onZoom={vi.fn()}
+        onOpenQuestion={vi.fn()}
+      />
+    </TooltipProvider>,
+  );
+  expect(container.querySelectorAll("circle")).toHaveLength(2);
+  expect(container.querySelector("pattern")).toBeNull();
 });
 
 it("new_circles_grow_in_from_zero", () => {

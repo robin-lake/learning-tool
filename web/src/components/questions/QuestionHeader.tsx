@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { EditQuestionDialog } from "./EditQuestionDialog";
 
+const LEVELS = ["Orientation", "Working knowledge", "Applied", "Expert"];
+
 export function QuestionHeader({ page }: { page: QuestionPage }) {
   const q = page.detail.question;
   const pin = usePin();
@@ -16,7 +18,7 @@ export function QuestionHeader({ page }: { page: QuestionPage }) {
   const status = useSetQuestionStatus();
   const retired = q.status === "retired";
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <Breadcrumbs path={[...page.topic_refs, { id: -q.id, name: `Question ${q.id}` }]} />
       {retired && (
         <Alert>
@@ -34,10 +36,15 @@ export function QuestionHeader({ page }: { page: QuestionPage }) {
           </AlertDescription>
         </Alert>
       )}
-      <div className="flex flex-wrap items-start gap-3">
-        <Badge variant="outline">L{q.level}</Badge>
-        {q.status !== "active" && <Badge variant="secondary">{q.status}</Badge>}
-        <h1 className="min-w-0 flex-1 text-xl font-semibold">{q.prompt}</h1>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Badge variant="outline">L{q.level}</Badge>
+          <span>{LEVELS[q.level] ?? ""}</span>
+          {q.status !== "active" && <Badge variant="secondary">{q.status}</Badge>}
+        </div>
+        <h1 className="max-w-[42rem] text-3xl font-bold leading-tight tracking-tight text-balance">
+          {q.prompt}
+        </h1>
         {!retired && (
           <div className="flex gap-2">
             <Button
