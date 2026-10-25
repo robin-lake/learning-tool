@@ -13,6 +13,8 @@ export type TreeNode = {
   createdOn: string;
   /** Questions counted toward the circle's area. */
   value: number;
+  due: number;
+  targetLevel: number | null;
   measures: Measures;
   children: TreeNode[];
 };
@@ -58,6 +60,7 @@ export function buildTree(
   }
   const existsAt = (n: TimelineNode) =>
     dayIndex === null ? n.now.questions : (n.series.questions[dayIndex] ?? 0);
+  const dueAt = (n: TimelineNode) => (dayIndex === null ? n.now.due : (n.series.due[dayIndex] ?? 0));
   const build = (n: TimelineNode): TreeNode | null => {
     const value = mode === "fixed" ? n.now.questions : existsAt(n);
     if (value === 0 && mode === "growing") return null;
@@ -68,6 +71,8 @@ export function buildTree(
       label: n.label,
       createdOn: n.created_on,
       value,
+      due: dueAt(n),
+      targetLevel: n.target_level,
       measures: measuresAt(n, dayIndex),
       children: childrenOf(n.id),
     };
@@ -84,6 +89,8 @@ export function buildTree(
       label: "Topics",
       createdOn: "",
       value: children.reduce((sum, c) => sum + c.value, 0),
+      due: children.reduce((sum, c) => sum + c.due, 0),
+      targetLevel: null,
       measures: { studied: 0, recall: null, durability: null, lastScore: null, daysSince: null },
       children,
     };
@@ -97,6 +104,8 @@ export function buildTree(
     label: root.label,
     createdOn: root.created_on,
     value: existsAt(root),
+    due: dueAt(root),
+    targetLevel: root.target_level,
     measures: measuresAt(root, dayIndex),
     children: childrenOf(root.id),
   };
