@@ -2,10 +2,10 @@
 
 How this codebase does things. Each entry says where it was decided. Never reuse an ID.
 
-### DB-R1 — `reviews` is append-only
-**Rule:** Never `UPDATE` or `DELETE` rows in `reviews`; corrections are new rows or derived-state changes.
+### DB-R1 — `reviews` and `status_events` are append-only
+**Rule:** Never `UPDATE` or `DELETE` rows in `reviews` or `status_events`; corrections are new rows or derived-state changes. Every topic or question status change writes a `status_events` row in the same transaction.
 **Why:** The review log is the source of truth for scheduling, heatmaps and map playback.
-**Violation looks like:** Any `UPDATE reviews` or `DELETE FROM reviews`; logic that rewrites past grades.
+**Violation looks like:** Any `UPDATE`/`DELETE` on `reviews` or `status_events`; logic that rewrites past grades; a status change that skips `status_log::record`.
 **Typical severity:** high
 **Decided:** Milestone 1 design (Design principles, Anti-goals).
 
@@ -26,7 +26,7 @@ How this codebase does things. Each entry says where it was decided. Never reuse
 ### DB-R4 — Nothing user-facing is hard-deleted
 **Rule:** Topics become `archived`, questions `suspended`/`retired`, sources `archived`. Only pure queue rows (`session_items`), the rebuildable cache (`question_state`) and a reference's search chunks (`reference_chunks`, re-derived from its `text.md` when the text is replaced) may be deleted.
 **Why:** History and links stay intact for the map and playback.
-**Violation looks like:** `DELETE` on topics, questions, sources, ratings, guide versions or links.
+**Violation looks like:** `DELETE` on topics, questions, sources, ratings, guide versions, links or status events.
 **Typical severity:** high
 **Decided:** Milestone 1 Global Constraints.
 

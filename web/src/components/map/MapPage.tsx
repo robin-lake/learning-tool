@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { format, parseISO } from "date-fns";
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useLayoutEffect, useState } from "react";
 import type { TimelineNode } from "@/api/generated/TimelineNode";
 import { timelineQuery } from "@/api/queries";
 import { ErrorState } from "@/components/ErrorState";
@@ -27,12 +27,12 @@ export const validateMapSearch = (s: Record<string, unknown>): MapSearch => ({
 
 const FALLBACK = { width: 800, height: 560 };
 
-/** The container's size, falling back to a default before layout (and in tests). */
+/** The container's size, falling back to a default before layout (and in tests). A callback ref,
+ * because the container only mounts once the timeline has loaded. */
 function useSize() {
-  const ref = useRef<HTMLDivElement>(null);
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [size, setSize] = useState(FALLBACK);
   useLayoutEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const measure = () => {
       const width = el.clientWidth;
@@ -42,8 +42,8 @@ function useSize() {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-  return [ref, size] as const;
+  }, [el]);
+  return [setEl, size] as const;
 }
 
 function path(nodes: TimelineNode[], id: string | undefined): TimelineNode[] {

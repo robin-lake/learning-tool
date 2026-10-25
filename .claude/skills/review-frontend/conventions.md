@@ -38,7 +38,7 @@ Recorded from the chosen stack and the milestone 3 build. Each entry says where 
 **Decided:** Dependencies (chosen); milestone 3.
 
 ### FE-R6 — d3 computes, React renders
-**Rule:** Use `d3-hierarchy` and `d3-scale` for layout math and color scales only (when the map arrives); React renders. No d3 DOM manipulation. Pure layout logic lives in `web/src/lib/` with unit tests (like `lib/heatmap.ts`).
+**Rule:** Use `d3-hierarchy` for layout math only; React renders. No d3 DOM manipulation. Pure layout and color logic lives in `web/src/lib/` with unit tests (like `lib/heatmap.ts` and `lib/map/`). Map layouts implement the `Layout` type in `lib/map/layout.ts`, so circle packing can be swapped for a treemap without touching the components.
 **Why:** One rendering model, with animation through `motion`.
 **Violation looks like:** `d3.select(...).append(...)`; mixing d3 and React ownership of the same nodes.
 **Typical severity:** medium

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { timeline } from "./fixtures";
 import { packLayout } from "./layout";
-import { buildTree } from "./tree";
+import { buildTree, type TreeNode } from "./tree";
 
 describe("packLayout", () => {
   it("stable_order_between_days", () => {
@@ -27,4 +27,34 @@ describe("packLayout", () => {
       expect(s.r).toBeGreaterThan(0);
     }
   });
+});
+
+it("top_level_areas_follow_question_counts", () => {
+  const leaf = (id: string, value: number, children: TreeNode[] = []): TreeNode => ({
+    id,
+    kind: children.length || id.startsWith("t") ? "topic" : "question",
+    refId: 0,
+    label: id,
+    createdOn: "2026-10-01",
+    value,
+    due: 0,
+    targetLevel: null,
+    measures: { studied: 0, recall: null, durability: null, lastScore: null, daysSince: null },
+    children,
+  });
+  const questions = (prefix: string, n: number) =>
+    Array.from({ length: n }, (_, i) => leaf(`q${prefix}${i}`, 1));
+  // 17 questions spread over four subtopics vs 10 in one subtopic, like the real data.
+  const big = leaf("t1", 17, [
+    leaf("t11", 5, questions("a", 5)),
+    leaf("t12", 4, questions("b", 4)),
+    leaf("t13", 5, questions("c", 5)),
+    leaf("t14", 3, questions("d", 3)),
+  ]);
+  const small = leaf("t2", 10, [leaf("t21", 10, questions("e", 10))]);
+  const shapes = packLayout(leaf("root", 27, [big, small]), 455, 360);
+  const r = (id: string) => shapes.find((s) => s.id === id)?.r ?? 0;
+  const areaRatio = (r("t1") / r("t2")) ** 2;
+  expect(areaRatio).toBeGreaterThan(1.7 * 0.75);
+  expect(areaRatio).toBeLessThan(1.7 * 1.25);
 });

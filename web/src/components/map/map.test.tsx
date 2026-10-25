@@ -57,3 +57,12 @@ it("color_by_updates_search", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Fixed" }));
   expect(router.state.location.search).toEqual({ color: "recall", mode: "fixed" });
 });
+
+it("map_fits_its_container_after_loading", async () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(480);
+  open("/map");
+  await screen.findByRole("button", { name: /^Electric circuits/ });
+  const svg = screen.getByTitle("Map of Topics").closest("svg");
+  expect(svg).toHaveAttribute("width", "480");
+  vi.restoreAllMocks();
+});

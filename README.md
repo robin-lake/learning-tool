@@ -7,7 +7,7 @@ It's meant as an Anki replacement with three differences:
 - **Grading is richer than pass/fail.** Harder questions have rubrics, and depth is tracked in mastery levels (L0 orientation → L3 expert).
 - **Your knowledge is visible as a map**, with topics cross-linked to show how ideas connect.
 
-Status: milestones 1 (study loop + topic building) and 3 (web app, part one) implemented. See [CLAUDE.md](CLAUDE.md) for decisions and [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) for SRS research.
+Status: milestones 1 (study loop + topic building), 3 (web app, part one) and 4 (the knowledge map) implemented. See [CLAUDE.md](CLAUDE.md) for decisions and [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) for SRS research.
 
 ## Setup
 
@@ -40,6 +40,9 @@ This opens your browser at <http://localhost:4747> (Ctrl+C stops it; studying wo
 - **Home:** today's numbers (answered, remaining, streak), a year of daily activity with per-day tooltips (grades and topics), what's coming up (including pinned questions), and what needs attention (leeches, ratings for `/refine-questions`).
 - **Topics:** every topic at any depth, with breadcrumbs, subtopic cards and their progress, and the questions in each. Rename, archive or add subtopics here.
 - **Questions:** the wording, answer and rubric, the schedule, every attempt you've made (your answers, points hit or missed, Claude's feedback), a 1–5 usefulness rating, and editing. Rewording creates a new version and keeps the history.
+- **Map:** every topic as a circle sized by its number of questions. Click a circle to zoom in (breadcrumbs take you back up); at the bottom level the circles are questions and open their pages. Hover or focus a circle for its numbers: recall now, durability, last score, when you last studied it, what's due and the target level.
+  - **Colors (Combined):** hue is your last score (red → purple → blue), depth is durability (pale = fragile, deep = memory that lasts months), and colors fade as a topic goes unstudied (from `stale_after_days`, 14, to `stale_full_days`, 60). Hatched grey means never studied. **Color by** shows one measure at a time instead.
+  - **History:** step, scrub or play (about 5 seconds from your first review to today). **Growing** shows circles appearing as questions were added; **Fixed** keeps today's sizes and only changes colors. The topic, day and view are in the URL, so a view can be bookmarked.
 - **Pins:** pin a question and it's asked first in your next `/study` session. A pin that isn't due uses one of that day's new-question slots; extras wait a day.
 
 Quizzing stays in Claude Code; the web app is for seeing progress and tending the knowledge base.

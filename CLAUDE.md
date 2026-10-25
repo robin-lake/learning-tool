@@ -2,13 +2,13 @@
 
 A personal spaced-repetition learning tool (Anki-like). Claude asks the user questions, the user's answers are graded (again / hard / good / easy), and a scheduler decides when each question comes back. A local web app shows progress and a map of what the user knows.
 
-**Status: milestones 1 and 3 implemented** (study loop, topic building, web app part one; the map, projects and 3D are next). Design docs go in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Update this file when decisions are made — don't let it drift from reality.
+**Status: milestones 1, 3 and 4 implemented** (study loop, topic building, web app part one, the knowledge map; projects and 3D are next). Design docs go in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Update this file when decisions are made — don't let it drift from reality.
 
 ## Layout
 
-- `crates/core/` (`learning-core`): all logic — `db` (open/migrate/seed), `settings`, `clock` (study day), `grading`, `scheduler` (FSRS), `topics`, `questions`, `queue`, `session`, `stats`, `chunking`, `references`, `guide`, `backup`. Migrations in `crates/core/migrations/`, first guide in `crates/core/seed/guide-v1.md`.
+- `crates/core/` (`learning-core`): all logic — `db` (open/migrate/seed), `settings`, `clock` (study day), `grading`, `scheduler` (FSRS), `topics`, `questions`, `queue`, `session`, `stats`, `status_log` (append-only status changes), `timeline` (per-day map history, computed on request), `chunking`, `references`, `guide`, `backup`. Migrations in `crates/core/migrations/`, first guide in `crates/core/seed/guide-v1.md`.
 - `crates/cli/` (`learning-tool`, a lib + binary): clap CLI; `mcp` serves the core over stdio via `rmcp` (`src/mcp/`); `serve` runs the axum REST API plus the embedded React app (`src/web/`, assets via `rust-embed` from `web/dist`).
-- `web/`: the React app (Vite, TypeScript, TanStack Router + Query, shadcn/Tailwind). API types in `web/src/api/generated/` come from Rust via `ts-rs`: never edit them by hand.
+- `web/`: the React app (Vite, TypeScript, TanStack Router + Query, shadcn/Tailwind). API types in `web/src/api/generated/` come from Rust via `ts-rs`: never edit them by hand. Pure map logic (tree, circle-packing layout, OKLCH colors, staleness) is in `web/src/lib/map/`; the map components are in `web/src/components/map/`.
 - `skills/`: `/study`, `/build-topic`, `/refine-questions` (symlinked into `~/.claude/skills/` by `scripts/install.sh`).
 
 ## Commands
@@ -54,11 +54,12 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 
 - **Backend:** Cargo workspace — `core` lib (DB, scheduler, topic graph) + one `learning-tool` binary with subcommands (`mcp`, `serve`, `migrate`). `tokio`, `rmcp` (stdio transport), `sqlx` (SQLite, migrations, FTS5 for references; runtime queries — see Conventions), `fsrs`, `axum` + `tower-http` (web API, milestone 3), `ts-rs` (TS types from Rust), `chrono`, `clap`, `serde`/`serde_json`, `thiserror` (core) / `anyhow` (binary), `tracing` (logs to stderr/file — stdout belongs to MCP).
 - **No Rust PDF crates:** skills run `pdftotext` (poppler) / `ocrmypdf`; Rust stores and indexes the extracted text.
-- **Frontend (milestone 3+):** React 19, TypeScript, Vite, pnpm, TanStack Router + Query, shadcn/ui (Radix, Tailwind 4), `lucide-react`, `d3-hierarchy` + `d3-scale`/`d3-scale-chromatic` for the map, `motion` for transitions, hand-rolled SVG heatmap with shadcn Tooltip, `date-fns`, Biome, Vitest + Testing Library.
+- **Frontend (milestone 3+):** React 19, TypeScript, Vite, pnpm, TanStack Router + Query, shadcn/ui (Radix, Tailwind 4), `lucide-react`, `d3-hierarchy` for the map layout (colors are hand-computed OKLCH), `motion` for transitions, hand-rolled SVG heatmap with shadcn Tooltip, `date-fns`, Biome, Vitest + Testing Library.
 
 ## Milestone docs
 
 - Milestone 1 design (schema, MCP tools, skills): `docs/superpowers/specs/2026-10-23-milestone-1-study-loop-design.md`; plan: `docs/superpowers/plans/2026-10-23-milestone-1-study-loop.md`.
+- Milestone 4 design (the knowledge map): `docs/superpowers/specs/2026-10-24-milestone-4-map-design.md`; plan: `docs/superpowers/plans/2026-10-24-milestone-4-map.md`.
 
 ## Future ideas
 
