@@ -7,6 +7,7 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 
 pub use crate::types::{LinkKind, Scope};
+use crate::status_log::{self, Entity, StatusEvent, StatusReason};
 use crate::types::{conflict_on_unique, str_enum, ts, validate_level, validate_weight};
 use crate::{Error, Result};
 
@@ -203,6 +204,7 @@ pub(crate) async fn subtree_ids(pool: &SqlitePool, id: i64) -> Result<Vec<i64>> 
 
 pub async fn update(pool: &SqlitePool, id: i64, patch: TopicPatch, now: DateTime<Utc>) -> Result<Topic> {
     let mut t = find(pool, id).await?;
+    let old_status = t.status;
     if let Some(name) = patch.name {
         t.slug = valid_slug(&name)?;
         t.name = name.trim().to_string();
@@ -230,6 +232,7 @@ pub async fn update(pool: &SqlitePool, id: i64, patch: TopicPatch, now: DateTime
         t.parent_id = parent;
     }
     let slug = t.slug.clone();
+    let mut tx = crate::db::begin_write(pool).await?;
     sqlx::query(
         "UPDATE topics SET parent_id = ?, name = ?, slug = ?, description = ?, target_level = ?, status = ?, position = ?, updated_at = ?
          WHERE id = ?",
@@ -243,9 +246,22 @@ pub async fn update(pool: &SqlitePool, id: i64, patch: TopicPatch, now: DateTime
     .bind(t.position)
     .bind(ts(now))
     .bind(id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| conflict_on_unique(e, || format!("a sibling topic with slug {slug:?} already exists")))?;
+    if t.status != old_status {
+        let reason = if t.status == TopicStatus::Archived { StatusReason::Archive } else { StatusReason::Unarchive };
+        let event = StatusEvent {
+            entity: Entity::Topic,
+            entity_id: id,
+            from_status: old_status.as_str().into(),
+            to_status: t.status.as_str().into(),
+            reason,
+            at: now,
+        };
+        status_log::record(&mut tx, &event).await?;
+    }
+    tx.commit().await?;
     find(pool, id).await
 }
 

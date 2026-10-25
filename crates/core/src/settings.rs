@@ -25,6 +25,8 @@ pub struct Settings {
     pub backup_dir: Option<PathBuf>,
     pub backups_keep: u32,
     pub web_port: u16,
+    pub stale_after_days: u32,
+    pub stale_full_days: u32,
 }
 
 const KEYS: &[&str] = &[
@@ -39,6 +41,8 @@ const KEYS: &[&str] = &[
     "backup_dir",
     "backups_keep",
     "web_port",
+    "stale_after_days",
+    "stale_full_days",
 ];
 
 fn parse_u32(key: &str, value: &str) -> Result<u32> {
@@ -87,6 +91,12 @@ fn validate(key: &str, value: &str) -> Result<()> {
             parse_tz(value)?;
         }
         "backup_dir" => {}
+        "stale_after_days" | "stale_full_days" => {
+            let days = parse_u32(key, value)?;
+            if !(1..=365).contains(&days) {
+                return Err(Error::Invalid(format!("{key} must be 1-365 days, got {days}")));
+            }
+        }
         "web_port" => {
             let port = parse_u32(key, value)?;
             if !(1..=65535).contains(&port) {
@@ -117,6 +127,8 @@ impl Default for Settings {
             backup_dir: None,
             backups_keep: 2,
             web_port: 4747,
+            stale_after_days: 14,
+            stale_full_days: 60,
         }
     }
 }
@@ -151,6 +163,8 @@ impl Settings {
             backup_dir: (!backup_dir.trim().is_empty()).then(|| PathBuf::from(backup_dir.trim())),
             backups_keep: parse_u32("backups_keep", &get("backups_keep")?)?,
             web_port: parse_u32("web_port", &get("web_port")?)? as u16,
+            stale_after_days: parse_u32("stale_after_days", &get("stale_after_days")?)?,
+            stale_full_days: parse_u32("stale_full_days", &get("stale_full_days")?)?,
         })
     }
 }
@@ -170,6 +184,18 @@ pub async fn all(pool: &SqlitePool) -> Result<Vec<(String, String)>> {
 
 pub async fn set(pool: &SqlitePool, key: &str, value: &str) -> Result<()> {
     validate(key, value)?;
+    // Staleness starts fading after `stale_after_days` and bottoms out at `stale_full_days`.
+    if key == "stale_after_days" || key == "stale_full_days" {
+        let current = Settings::load(pool).await?;
+        let n = parse_u32(key, value)?;
+        let (after, full) =
+            if key == "stale_after_days" { (n, current.stale_full_days) } else { (current.stale_after_days, n) };
+        if full <= after {
+            return Err(Error::Invalid(format!(
+                "stale_full_days ({full}) must be greater than stale_after_days ({after})"
+            )));
+        }
+    }
     sqlx::query("INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = ?2")
         .bind(key)
         .bind(value.trim())
@@ -197,6 +223,21 @@ mod tests {
         assert_eq!(s.backups_keep, 2);
         assert!(s.backup_dir.is_none());
         assert!(matches!(s.timezone, TzSetting::System));
+    }
+
+    #[tokio::test]
+    async fn stale_settings_default_and_validate() {
+        let p = test_pool().await;
+        let s = Settings::load(&p).await.unwrap();
+        assert_eq!((s.stale_after_days, s.stale_full_days), (14, 60));
+        assert!(matches!(set(&p, "stale_after_days", "0").await, Err(Error::Invalid(_))));
+        assert!(matches!(set(&p, "stale_full_days", "400").await, Err(Error::Invalid(_))));
+        assert!(matches!(set(&p, "stale_full_days", "10").await, Err(Error::Invalid(_))));
+        assert!(matches!(set(&p, "stale_after_days", "60").await, Err(Error::Invalid(_))));
+        set(&p, "stale_after_days", "7").await.unwrap();
+        set(&p, "stale_full_days", "30").await.unwrap();
+        let s = Settings::load(&p).await.unwrap();
+        assert_eq!((s.stale_after_days, s.stale_full_days), (7, 30));
     }
 
     #[tokio::test]

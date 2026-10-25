@@ -7,6 +7,7 @@ use sqlx::{Row, SqlitePool};
 use crate::grading::{Grade, PointResult, Rubric, validate_rubric};
 use crate::scheduler::{self, QState};
 use crate::settings::Settings;
+use crate::status_log::{self, Entity, StatusEvent, StatusReason};
 use crate::topics;
 pub use crate::types::{LinkKind, RatingClass, Scope};
 use crate::types::{parse_ts, str_enum, ts, validate_level, validate_weight};
@@ -355,6 +356,15 @@ pub async fn update(pool: &SqlitePool, id: i64, patch: QuestionPatch, now: DateT
             .bind(id)
             .execute(&mut *tx)
             .await?;
+        let event = StatusEvent {
+            entity: Entity::Question,
+            entity_id: id,
+            from_status: old.status.as_str().into(),
+            to_status: QuestionStatus::Retired.as_str().into(),
+            reason: StatusReason::Reword,
+            at: now,
+        };
+        status_log::record(&mut tx, &event).await?;
         let mut state = scheduler::load_state_conn(&mut tx, id).await?;
         if state.reps > 0 {
             // Keep the schedule but give the new wording a fresh lapse count (leech detection).
@@ -411,12 +421,33 @@ pub async fn set_status(pool: &SqlitePool, id: i64, status: QuestionStatus, now:
             "question {id} is retired (it was reworded or removed); change its newest version instead"
         )));
     }
+    if q.status == status {
+        return Ok(());
+    }
+    let reason = match (q.status, status) {
+        (_, QuestionStatus::Retired) => StatusReason::Retire,
+        (QuestionStatus::Active, QuestionStatus::Suspended) => StatusReason::Suspend,
+        (QuestionStatus::Suspended, QuestionStatus::Active) => StatusReason::Unsuspend,
+        (_, QuestionStatus::Suspended) => StatusReason::Suspend,
+        _ => StatusReason::Reactivate,
+    };
+    let mut tx = crate::db::begin_write(pool).await?;
     sqlx::query("UPDATE questions SET status = ?, updated_at = ? WHERE id = ?")
         .bind(status.as_str())
         .bind(ts(now))
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    let event = StatusEvent {
+        entity: Entity::Question,
+        entity_id: id,
+        from_status: q.status.as_str().into(),
+        to_status: status.as_str().into(),
+        reason,
+        at: now,
+    };
+    status_log::record(&mut tx, &event).await?;
+    tx.commit().await?;
     Ok(())
 }
 
