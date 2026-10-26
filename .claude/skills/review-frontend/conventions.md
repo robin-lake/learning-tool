@@ -64,3 +64,10 @@ Recorded from the chosen stack and the milestone 3 build. Each entry says where 
 **Violation looks like:** Answers or feedback in `text-xs`/`text-sm`; paragraphs spanning the full page width; tiny all-caps section labels; `uppercase` with `tracking-wide` or less; bold and italic together.
 **Typical severity:** low
 **Decided:** Question page restyle after milestone 4.
+
+### FE-R10 — Frontend tests use this repo's seams
+**Rule:** Pure logic in `web/src/lib/` has Vitest unit tests. Components render through `renderWithApp` (fresh `QueryClient`, retries off) with the network mocked only via `mockFetch`. Pages are tested by rendering the real `routeTree` in a memory history and asserting on `router.state.location`. Time uses fake timers or stubbed `requestAnimationFrame`/`performance.now`. See [`docs/research/testing.md`](../../../docs/research/testing.md).
+**Why:** One network seam and an isolated cache per test keep tests fast and independent (TkDodo, *Testing React Query*); the real route tree tests URL state end to end.
+**Violation looks like:** Mocking hooks or `api()` directly; a shared `QueryClient` across tests; real `setTimeout` waits; a new route or lib module with no test.
+**Typical severity:** medium
+**Decided:** Milestones 3–4 (how the suites grew); TDD made explicit 2026-10-26.

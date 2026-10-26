@@ -57,3 +57,10 @@ How this codebase does things. Each entry says where it was decided. Never reuse
 **Violation looks like:** Storing a derived value that rebuild can't reproduce; rebuild and incremental paths computing it differently.
 **Typical severity:** high
 **Decided:** Milestone 1 design (Design principles).
+
+### BE-R9 — Backend tests use this repo's seams
+**Rule:** Core behavior is tested in `crates/core` against `db::test_pool()` and `testutil`, with `now` passed explicitly; MCP tools through `crates/cli/tests/mcp_stdio.rs`; HTTP routes through `crates/cli/tests/web_api.rs` in-process. Performance tests are `#[ignore]`d, run in release, and state their scenario and limit. Details in [`docs/research/testing.md`](../../../docs/research/testing.md).
+**Why:** Real SQLite and the real front doors catch the integration mistakes mocks hide, and an injected clock keeps rollover and DST tests deterministic.
+**Violation looks like:** A mocked database or MCP layer; a new tool or route with no test at its front door; `Utc::now()` in a test's arrange step; a perf test that runs in the default suite.
+**Typical severity:** medium
+**Decided:** Milestones 1–4 (how the suites grew); TDD made explicit 2026-10-26.

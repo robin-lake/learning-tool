@@ -1,6 +1,6 @@
 ---
 name: review-database
-description: Review committed database changes in this repo — SQLite migrations, schema, and SQL in Rust code — for architectural problems such as missing constraints, unsafe migrations, transaction misuse, history loss and indexing, against general principles and this repo's conventions, grading each finding high/medium/low/nit. Use after building work that touches the schema or queries.
+description: Review committed database changes in this repo — SQLite migrations, schema, and SQL in Rust code — for architectural problems such as missing constraints, unsafe migrations, transaction misuse, history loss, indexing and untested queries or migrations, against general principles and this repo's conventions, grading each finding high/medium/low/nit. Use after building work that touches the schema or queries.
 ---
 
 # Database architecture review

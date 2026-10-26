@@ -1,6 +1,6 @@
 ---
 name: review-frontend
-description: Review committed frontend changes in this repo (the React + TypeScript web app) for architectural problems — state ownership, component boundaries, data fetching, routing, typed API boundary, accessibility — against general principles and this repo's conventions, grading each finding high/medium/low/nit. Use after building frontend work.
+description: Review committed frontend changes in this repo (the React + TypeScript web app) for architectural problems — state ownership, component boundaries, data fetching, routing, typed API boundary, accessibility, user-focused tests — against general principles and this repo's conventions, grading each finding high/medium/low/nit. Use after building frontend work.
 ---
 
 # Frontend architecture review

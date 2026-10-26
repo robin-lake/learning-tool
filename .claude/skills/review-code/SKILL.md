@@ -1,6 +1,6 @@
 ---
 name: review-code
-description: Review committed code in this repo for general coding best practices — naming, constants and magic values, function design, duplication, comments, error messages, dead code, coupling — against general principles and this repo's conventions, grading each finding high/medium/low/nit. Use after building any new work, alongside the backend/database/frontend reviews.
+description: Review committed code in this repo for general coding best practices — naming, constants and magic values, function design, duplication, comments, error messages, dead code, coupling, test-driven development and test quality — against general principles and this repo's conventions, grading each finding high/medium/low/nit. Use after building any new work, alongside the backend/database/frontend reviews.
 ---
 
 # General code review

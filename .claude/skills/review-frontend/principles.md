@@ -61,3 +61,9 @@ Applies to any React/TypeScript frontend. Add entries as you learn; never reuse 
 **Why:** Keeps interactions smooth as data grows.
 **Violation looks like:** A big chart re-rendering on every keystroke elsewhere; layout math recomputed on every render.
 **Typical severity:** low (medium for the map and playback)
+
+### FE-G11 — Test the way people use the app
+**Rule:** Component tests find elements as a user would (`getByRole` with a name first, then label or text, test IDs last), wait with `findBy*`, assert with jest-dom matchers on what the user sees, and use `queryBy*` only to assert absence. Pure logic gets plain unit tests. Write the test first.
+**Why:** Testing Library's guiding principle: tests that resemble real use give the most confidence and survive refactors; a role query that fails often reveals an accessibility gap.
+**Violation looks like:** `container.querySelector` or `getByTestId` where a role works; `waitFor(() => getBy…)`; assertions on component state, props or hook calls; raw `.disabled` checks instead of `toBeDisabled()`.
+**Typical severity:** low

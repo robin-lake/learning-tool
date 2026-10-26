@@ -61,3 +61,9 @@ Applies to any relational database. Add entries as you learn; never reuse an ID.
 **Why:** Migrations that only work on empty databases break real installs.
 **Violation looks like:** `ADD COLUMN ... NOT NULL` without a default; a new `UNIQUE`/`CHECK` that existing rows may violate.
 **Typical severity:** high
+
+### DB-G11 — Test against a real database built by the real migrations
+**Rule:** Database code is tested against a real database, never a mock, built by running the actual migrations, with one fresh database per test and production pragmas (foreign keys on). Schema rules are test-driven too: a new constraint gets a test that a violating write is rejected.
+**Why:** SQL only proves itself when it runs; tests on the migrated schema also prove a fresh install works, and isolated databases keep tests order-independent.
+**Violation looks like:** Hand-written test DDL instead of migrations; a mocked repository standing in for SQL; tests sharing rows; a new `CHECK`, `UNIQUE` or foreign key with no test that it rejects bad data.
+**Typical severity:** medium

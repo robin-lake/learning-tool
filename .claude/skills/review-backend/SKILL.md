@@ -1,6 +1,6 @@
 ---
 name: review-backend
-description: Review committed Rust backend changes in this repo for architectural problems — layering, crate and module boundaries, error handling, async, side effects, API shape — against general principles and this repo's conventions, grading each finding high/medium/low/nit. Use after building backend work, or when asked to review backend structure.
+description: Review committed Rust backend changes in this repo for architectural problems — layering, crate and module boundaries, error handling, async, side effects, API shape, test-first tests at the right seams — against general principles and this repo's conventions, grading each finding high/medium/low/nit. Use after building backend work, or when asked to review backend structure.
 ---
 
 # Backend architecture review

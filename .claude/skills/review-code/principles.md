@@ -73,3 +73,15 @@ Language-agnostic. Add entries as you learn; never reuse an ID.
 **Why:** Changes stay local.
 **Violation looks like:** Functions taking a large context struct to read one field; feature logic split across distant files for no reason.
 **Typical severity:** low
+
+### CODE-G13 — Test first: red, green, refactor
+**Rule:** Behavior changes are written test-first: list the cases, write one failing test, watch it fail for the right reason, make it pass with the simplest change, then refactor while green. Bug fixes start with a test that reproduces the bug. See [`docs/research/testing.md`](../../../docs/research/testing.md).
+**Why:** A test you never saw fail proves nothing. Test-first also forces the interface decision before the implementation, and leaves every behavior covered.
+**Violation looks like:** New or changed behavior with no test in the same change; a bug fix with no regression test; a new test that passes against the parent commit; an assertion weakened or deleted to get to green; an expected value copied from the code's own output.
+**Typical severity:** medium (high when a bug fix ships without a test that reproduces it)
+
+### CODE-G14 — Tests read as specifications
+**Rule:** Each test checks one behavior through a public seam, is named for that behavior, follows arrange-act-assert, and avoids logic, sleeps and hidden dependencies (clock, randomness, network).
+**Why:** Tests are the executable spec; ones tied to internals break on refactors, and flaky ones teach people to ignore red.
+**Violation looks like:** `test1`/`works` names; several unrelated behaviors in one test; assertions on private state or mock call counts where an observable result exists; loops and branches in tests; real waits or the real clock.
+**Typical severity:** low

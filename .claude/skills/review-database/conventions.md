@@ -64,3 +64,10 @@ How this codebase does things. Each entry says where it was decided. Never reuse
 **Violation looks like:** A new query path with no test reaching it.
 **Typical severity:** medium
 **Decided:** Milestone 1 (Task 1 ruling: runtime queries instead of compile-time macros).
+
+### DB-R10 — Migrations and constraints come with tests
+**Rule:** Every new migration comes with tests written first. A new constraint gets a test that violating rows are rejected. A migration that touches existing data gets a test that seeds rows in the old shape, runs the migration and checks the result. New settings rows get a test that they're seeded. See [`docs/research/testing.md`](../../../docs/research/testing.md).
+**Why:** Migrations run once against Robin's real data and can't be re-run; the test is the only rehearsal.
+**Violation looks like:** A migration with no accompanying test; a data-changing migration tested only on an empty database.
+**Typical severity:** high for data-changing migrations, medium otherwise
+**Decided:** Robin's request for TDD, 2026-10-26.

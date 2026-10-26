@@ -61,3 +61,9 @@ Applies to any Rust backend. Add entries as you learn; never reuse an ID.
 **Why:** Tests at seams survive refactoring and catch integration mistakes that unit-level mocks miss.
 **Violation looks like:** New public behavior with no test; tests that only assert on mocks; tests coupled to private internals.
 **Typical severity:** medium
+
+### BE-G11 — Rust tests at the right level
+**Rule:** Unit tests sit in a `#[cfg(test)] mod tests` beside the code; integration tests in `tests/` go through the public API only, with shared helpers in `tests/common/mod.rs`. Logic lives in a library so tests can reach it. Property tests are welcome for pure functions with wide input spaces.
+**Why:** The Rust Book's layout keeps fast, focused tests next to the code and keeps integration tests honest about the public surface.
+**Violation looks like:** Logic only reachable through `main`; integration tests reaching into internals through test-only `pub` items; a helper file in `tests/` compiled as an empty test crate.
+**Typical severity:** low

@@ -56,3 +56,10 @@ How this codebase does things. Each entry says where it was decided. Never reuse
 **Violation looks like:** Paragraph-long doc comments on simple functions; comments restating the code.
 **Typical severity:** nit
 **Decided:** Milestone 1 code.
+
+### CODE-R7 — Test-driven development, checked in review
+**Rule:** All new code in this repo is written test-first per [`docs/research/testing.md`](../../../docs/research/testing.md). Reviews read the tests in the diff first and, for a bug fix or risky change, confirm the new test fails without it: run it against the parent commit in a scratch worktree (`git worktree add`), never by editing the working tree.
+**Why:** Robin asked for TDD in writing and reviewing code; the review is where the evidence gets checked.
+**Violation looks like:** A change whose tests came in a later commit, or never; a "test" that cannot fail; skipped (`#[ignore]`, `it.skip`) tests without a stated reason.
+**Typical severity:** medium
+**Decided:** Robin's request, 2026-10-26.

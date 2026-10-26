@@ -34,6 +34,10 @@ Keep only the changed files inside the skill's scope. If none are, report
 Read the diff, and then enough of the surrounding code (the whole changed function, its callers, the
 module it lives in) to judge structure. A line can look fine in a diff and still cross a boundary.
 
+Read the **tests** in the diff as well: they say what the change is meant to do. This repo works
+test-first ([`docs/research/testing.md`](../../../docs/research/testing.md)). Each skill has entries for
+its own tests, and `/review-code` owns the general TDD checks (CODE-G13, CODE-G14, CODE-R7).
+
 ## 4. Check every entry
 
 Go through **every** entry in both lists (skip entries marked *retired*). For each one, ask whether the

@@ -22,6 +22,7 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 
 ## Conventions
 
+- **Test-driven development for all new code:** write the failing test first, watch it fail for the right reason, make it pass with the simplest change, then refactor. Bug fixes start with a test that reproduces the bug. Practices and references per area (Rust, SQLite, React): [docs/research/testing.md](docs/research/testing.md); the review skills check it.
 - Core functions take `now: DateTime<Utc>` explicitly — no hidden clock.
 - SQL uses sqlx runtime queries (`query`/`query_as`) with static strings; every query is covered by tests. sqlx 0.9 rejects `format!`-built SQL — bind values instead (use `json_each(?)` for lists).
 - The repo may sit on exFAT, where macOS writes `._*` sidecar files: `crates/core/build.rs` strips them from `migrations/`, `rust-embed`, tsconfig, Biome, Vitest and the router plugin ignore them, and `web/.npmrc` uses a flat, copied `node_modules` (no symlinks on exFAT).
@@ -69,6 +70,7 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 
 - [README.md](README.md) — core principles of *Ultralearning*, *Make It Stick*, and *The Procrastination Equation*, with what each means for the app. Check design choices against these.
 - [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) — SRS/Anki/FSRS lessons and their implications. Consult before changing scheduling, grading, workload, or question-writing behavior.
+- [docs/research/testing.md](docs/research/testing.md) — TDD practices and sources for the backend, database and frontend, and how reviews check them.
 - [docs/research/typography.md](docs/research/typography.md) — text rules from *Practical Typography* and Stripe's docs layout, with this app's Tailwind values. Follow it for any UI text (FE-R9).
 
 ## Product outline

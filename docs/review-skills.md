@@ -25,6 +25,8 @@ By default a review covers:
 
 Pass a range to review something else, e.g. `/review-database HEAD~3..HEAD`.
 
+All four also check test-driven development against [`research/testing.md`](research/testing.md): `/review-code` the general practice, and each layer its own test seams.
+
 Severity levels: **high (blocking)** · **medium** · **low** · **nit**. The table in the procedure says
 what each means and how to triage it.
 
