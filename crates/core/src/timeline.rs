@@ -487,6 +487,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn due_from_the_due_date_for_questions_and_topics() {
+        // Found by cargo-mutants: nothing checked a non-zero due count.
+        let (p, s) = setup().await;
+        let t = testutil::topic(&p, None, "T").await;
+        let q = testutil::question(&p, t).await;
+        review(&p, q, "2026-10-01", 1, 0.0).await; // again: due the next day
+        let tl = timeline(&p, &s, utc("2026-10-03T18:00:00Z")).await.unwrap();
+        assert_eq!(node(&tl, &format!("q{q}")).series.due, vec![0, 1, 1]);
+        assert_eq!(node(&tl, &format!("t{t}")).series.due, vec![0, 1, 1]);
+        assert_eq!(node(&tl, &format!("t{t}")).now.due, 1);
+    }
+
+    #[tokio::test]
     async fn suspended_exists_but_not_due() {
         let (p, s) = setup().await;
         let t = testutil::topic(&p, None, "T").await;

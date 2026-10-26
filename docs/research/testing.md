@@ -79,6 +79,45 @@ Sources:
 - **Time:** Vitest fake timers, or stubbed `requestAnimationFrame` and `performance.now`, instead of real waits.
 - **Static checks count:** TypeScript strict mode and Biome catch whole classes of errors before any test runs; keep them clean.
 
+## Mutation testing: do the tests catch bugs?
+
+Line coverage only says code *ran* under a test. Mutation testing checks whether a test would *notice* if the code were wrong:
+1. The tool makes small changes to the code, called mutants: `<` becomes `<=`, `+=` becomes `*=`, a match arm is deleted, a function returns a default.
+2. It runs the tests against each mutant.
+3. A mutant that a test fails on is *caught*. One that survives marks a gap: code that runs under the tests but isn't really checked.
+
+It's the TDD "watch it fail" step, automated for every line. Fowler's [Test Coverage](https://martinfowler.com/bliki/TestCoverage.html) explains why a coverage percentage is a poor target; the surviving mutants are the useful output instead.
+
+**Rust: [`cargo-mutants`](https://mutants.rs)** (install with `cargo install --locked cargo-mutants`). Tried on this repo on 2026-10-26:
+
+| Run | Mutants | Result | Time |
+|---|---|---|---|
+| `grading.rs` | 52 | 48 caught, 1 missed, 3 didn't compile | 7 min |
+| The milestone 4 Rust diff (`--in-diff`) | 116 | 83 caught, 1 timeout (counts as caught), 4 missed, 28 didn't compile | 11 min |
+| The whole workspace | 785 | not run (over an hour) | |
+
+What the survivors found:
+- **No test of a score exactly at the pass mark** (grading.rs). Pass at 60% must include 60%.
+- **The timeline's "due" counts never checked** when anything was due, for questions or topics.
+- **A redundant match arm in `questions::set_status`,** which also hid an untested case.
+
+Each became a test or a simplification, and a re-run caught every mutant.
+
+**How to use it on new code:**
+- **Run it on the change, not the crate.** Do this before finishing a branch that touches Rust logic:
+  ```bash
+  git diff main... -- crates > /tmp/change.diff
+  cargo mutants --in-diff /tmp/change.diff -j 4
+  ```
+  For one module: `cargo mutants -f crates/core/src/grading.rs --test-workspace=false`. Run it in the background; it takes minutes.
+- **Results** are in `mutants.out/missed.txt`, which git ignores. A missed mutant is either:
+  - **a test gap:** write the test that catches it, then re-run just that mutant with `-F '<mutant description>'` to confirm it's caught
+  - **an equivalent mutant**, where the change can't alter behaviour, often redundant code: simplify the code, or note why it's harmless
+- **Timeouts count as caught** (usually an infinite loop). **Unviable** mutants didn't compile and mean nothing.
+- **No percentage target.** The goal is no unexplained survivors in the code you just wrote.
+
+**TypeScript:** [StrykerJS](https://stryker-mutator.io) does the same with a Vitest runner. It hasn't been tried in this repo yet; `web/src/lib/` (map layout, colors, heatmap) would be the place to start.
+
 ## How a reviewer checks TDD
 
 A diff can't show the order things were written in, but it shows the evidence:
@@ -88,3 +127,4 @@ A diff can't show the order things were written in, but it shows the evidence:
    - copy in only the new test, run it, and expect it to fail
 3. **The test exercises the real seam.** Look for over-mocking, assertions on internals and copied outputs.
 4. **Weakened assertions get justified.** A changed expectation in an existing test needs a reason in the commit or the code.
+5. **Rust logic was mutation-tested.** For changes to Rust logic, ask whether `cargo mutants --in-diff` was run and its survivors resolved. If not, and the code matters (grading, scheduling, the queue, the timeline), run it, or recommend it.

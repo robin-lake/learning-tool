@@ -58,8 +58,8 @@ How this codebase does things. Each entry says where it was decided. Never reuse
 **Decided:** Milestone 1 code.
 
 ### CODE-R7 — Test-driven development, checked in review
-**Rule:** All new code in this repo is written test-first per [`docs/research/testing.md`](../../../docs/research/testing.md). Reviews read the tests in the diff first and, for a bug fix or risky change, confirm the new test fails without it: run it against the parent commit in a scratch worktree (`git worktree add`), never by editing the working tree.
+**Rule:** All new code in this repo is written test-first per [`docs/research/testing.md`](../../../docs/research/testing.md). Reviews read the tests in the diff first and, for a bug fix or risky change, confirm the new test fails without it: run it against the parent commit in a scratch worktree (`git worktree add`), never by editing the working tree. Changes to Rust logic are mutation-tested with `cargo mutants --in-diff` before they land; every surviving mutant gets a test or a stated reason it's equivalent.
 **Why:** Robin asked for TDD in writing and reviewing code; the review is where the evidence gets checked.
-**Violation looks like:** A change whose tests came in a later commit, or never; a "test" that cannot fail; skipped (`#[ignore]`, `it.skip`) tests without a stated reason.
+**Violation looks like:** A change whose tests came in a later commit, or never; a "test" that cannot fail; skipped (`#[ignore]`, `it.skip`) tests without a stated reason; Rust logic changes with unexplained surviving mutants.
 **Typical severity:** medium
 **Decided:** Robin's request, 2026-10-26.

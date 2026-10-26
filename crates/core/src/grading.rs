@@ -185,6 +185,12 @@ mod tests {
         assert_eq!(g([true, true, true], 0, true), Grade::Easy);
     }
     #[test]
+    fn grade_exactly_at_threshold_passes() {
+        // "Pass at 60%" includes 60%: found by cargo-mutants (`<` → `<=` survived).
+        let s = Score { score: 0.6, essentials_met: true };
+        assert_eq!(grade(&s, 0.6, 0, false), Grade::Hard);
+    }
+    #[test]
     fn grade_boundary_at_midpoint_is_good() {
         let s = Score { score: 0.8, essentials_met: true };
         assert_eq!(grade(&s, 0.6, 0, false), Grade::Good);

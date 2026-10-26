@@ -14,6 +14,7 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 ## Commands
 
 - `cargo test --workspace` — all Rust tests (core unit tests use in-memory SQLite; `crates/cli/tests/mcp_stdio.rs` drives the MCP server, `web_api.rs` the HTTP API in-process).
+- `git diff main... -- crates > /tmp/change.diff && cargo mutants --in-diff /tmp/change.diff -j 4` — mutation-test the Rust lines a change touched (run in the background; minutes). Resolve every surviving mutant before finishing: a test that catches it, or a reason it's equivalent. See `docs/research/testing.md`.
 - `cargo test --features learning-core/ts,learning-tool/ts export_bindings` — regenerate `web/src/api/generated/` after changing an API type; commit the result.
 - `pnpm --dir web test`, `pnpm --dir web check` (Biome), `pnpm --dir web build`.
 - Frontend dev loop: `learning-tool serve --no-open` in one terminal, `pnpm --dir web dev` in another (Vite proxies `/api` to port 4747).
@@ -22,7 +23,7 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 
 ## Conventions
 
-- **Test-driven development for all new code:** write the failing test first, watch it fail for the right reason, make it pass with the simplest change, then refactor. Bug fixes start with a test that reproduces the bug. Practices and references per area (Rust, SQLite, React): [docs/research/testing.md](docs/research/testing.md); the review skills check it.
+- **Test-driven development for all new code:** write the failing test first, watch it fail for the right reason, make it pass with the simplest change, then refactor. Bug fixes start with a test that reproduces the bug. Before finishing Rust logic changes, run `cargo mutants` on the diff. Practices and references per area (Rust, SQLite, React): [docs/research/testing.md](docs/research/testing.md); the review skills check it.
 - Core functions take `now: DateTime<Utc>` explicitly — no hidden clock.
 - SQL uses sqlx runtime queries (`query`/`query_as`) with static strings; every query is covered by tests. sqlx 0.9 rejects `format!`-built SQL — bind values instead (use `json_each(?)` for lists).
 - The repo may sit on exFAT, where macOS writes `._*` sidecar files: `crates/core/build.rs` strips them from `migrations/`, `rust-embed`, tsconfig, Biome, Vitest and the router plugin ignore them, and `web/.npmrc` uses a flat, copied `node_modules` (no symlinks on exFAT).

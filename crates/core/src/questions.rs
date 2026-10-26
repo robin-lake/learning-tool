@@ -426,7 +426,6 @@ pub async fn set_status(pool: &SqlitePool, id: i64, status: QuestionStatus, now:
     }
     let reason = match (q.status, status) {
         (_, QuestionStatus::Retired) => StatusReason::Retire,
-        (QuestionStatus::Active, QuestionStatus::Suspended) => StatusReason::Suspend,
         (QuestionStatus::Suspended, QuestionStatus::Active) => StatusReason::Unsuspend,
         (_, QuestionStatus::Suspended) => StatusReason::Suspend,
         _ => StatusReason::Reactivate,

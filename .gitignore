@@ -10,3 +10,7 @@
 # Web app build output and dependencies
 /web/dist
 /web/node_modules
+
+# cargo-mutants output
+mutants.out/
+mutants.out.old/
