@@ -57,3 +57,10 @@ Recorded from the chosen stack and the milestone 3 build. Each entry says where 
 **Violation looks like:** A new config or glob that would pick up `._*` files; switching pnpm back to symlinked installs.
 **Typical severity:** medium
 **Decided:** Milestone 3 (Task 7).
+
+### FE-R9 — Text follows the typography guide
+**Rule:** Reading text, headings and labels follow [`docs/research/typography.md`](../../../docs/research/typography.md) (from Butterick's *Practical Typography*): 16 px body text with relaxed line spacing, reading columns of 45–90 characters, sentence-case headings, sparing emphasis, and all caps only for short labels with at least `tracking-wider`.
+**Why:** Most of the app is reading answers and feedback; comfortable text is what makes reviewing pleasant enough to come back to.
+**Violation looks like:** Answers or feedback in `text-xs`/`text-sm`; paragraphs spanning the full page width; tiny all-caps section labels; `uppercase` with `tracking-wide` or less; bold and italic together.
+**Typical severity:** low
+**Decided:** Question page restyle after milestone 4.

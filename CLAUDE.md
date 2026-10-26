@@ -69,6 +69,7 @@ A personal spaced-repetition learning tool (Anki-like). Claude asks the user que
 
 - [README.md](README.md) — core principles of *Ultralearning*, *Make It Stick*, and *The Procrastination Equation*, with what each means for the app. Check design choices against these.
 - [docs/research/spaced-repetition.md](docs/research/spaced-repetition.md) — SRS/Anki/FSRS lessons and their implications. Consult before changing scheduling, grading, workload, or question-writing behavior.
+- [docs/research/typography.md](docs/research/typography.md) — text rules from *Practical Typography* and Stripe's docs layout, with this app's Tailwind values. Follow it for any UI text (FE-R9).
 
 ## Product outline
 
